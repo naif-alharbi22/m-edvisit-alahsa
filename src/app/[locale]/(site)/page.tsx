@@ -21,18 +21,18 @@ import {
 } from "lucide-react";
 
 const featureKeys = [
-  { icon: Stethoscope, key: "triage", badge: "Core" },
-  { icon: DollarSign, key: "pricing", badge: "Core" },
-  { icon: Plane, key: "travel", badge: "Coming Soon" },
-  { icon: MessageSquare, key: "chat", badge: "Core" },
-  { icon: HeartPulse, key: "followup", badge: "Coming Soon" },
+  { icon: Stethoscope, key: "triage", live: true, href: "/triage" },
+  { icon: DollarSign, key: "pricing", live: true, href: "/facilities" },
+  { icon: Plane, key: "travel", live: true, href: "/hotels" },
+  { icon: MessageSquare, key: "chat", live: true, href: "/chat" },
+  { icon: HeartPulse, key: "followup", live: false, href: null },
 ] as const;
 
 const trustKeys = [
   { icon: Shield, key: "verified" },
   { icon: Globe, key: "serving" },
   { icon: Zap, key: "aiPowered" },
-];
+] as const;
 
 export default function HomePage() {
   const t = useTranslations();
@@ -61,16 +61,14 @@ export default function HomePage() {
             </FadeIn>
             <FadeIn direction="up" delay={0.35}>
               <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
-                <Link href="/triage">
-                  <Button size="lg" className="w-full sm:w-auto gap-2">
-                    {t("hero.cta")} <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </Link>
-                <Link href="/facilities">
-                  <Button size="lg" variant="outline" className="w-full sm:w-auto">
-                    {t("hero.secondary")}
-                  </Button>
-                </Link>
+                <Button asChild size="lg" className="w-full sm:w-auto gap-2">
+                  <Link href="/triage">
+                    {t("hero.cta")} <ArrowRight className="h-4 w-4 rtl:rotate-180" />
+                  </Link>
+                </Button>
+                <Button asChild size="lg" variant="outline" className="w-full sm:w-auto">
+                  <Link href="/facilities">{t("hero.secondary")}</Link>
+                </Button>
               </div>
             </FadeIn>
           </div>
@@ -111,11 +109,19 @@ export default function HomePage() {
                       <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
                         <feature.icon className="h-5 w-5" />
                       </div>
-                      <Badge variant={feature.badge === "Core" ? "default" : "secondary"} className="text-xs">
-                        {feature.badge}
+                      <Badge variant={feature.live ? "default" : "secondary"} className="text-xs">
+                        {feature.live ? t("features.badgeCore") : t("features.badgeSoon")}
                       </Badge>
                     </div>
-                    <CardTitle className="mt-3">{t(`features.${feature.key}.title`)}</CardTitle>
+                    <CardTitle className="mt-3">
+                      {feature.href ? (
+                        <Link href={feature.href} className="after:absolute after:inset-0 hover:text-primary">
+                          {t(`features.${feature.key}.title`)}
+                        </Link>
+                      ) : (
+                        t(`features.${feature.key}.title`)
+                      )}
+                    </CardTitle>
                     <CardDescription>{t(`features.${feature.key}.description`)}</CardDescription>
                   </CardHeader>
                 </Card>
@@ -133,13 +139,13 @@ export default function HomePage() {
               {t("cta.subtitle")}
             </p>
             <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
-              <Link href="/triage">
-                <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.98 }}>
-                  <Button size="lg" variant="secondary" className="gap-2">
-                    {t("cta.button")} <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </motion.div>
-              </Link>
+              <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.98 }}>
+                <Button asChild size="lg" variant="secondary" className="gap-2">
+                  <Link href="/triage">
+                    {t("cta.button")} <ArrowRight className="h-4 w-4 rtl:rotate-180" />
+                  </Link>
+                </Button>
+              </motion.div>
             </div>
         </div>
       </section>

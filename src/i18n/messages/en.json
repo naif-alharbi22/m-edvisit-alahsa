@@ -760,5 +760,11 @@
     "country": "Saudi Arabia",
     "rights": "All rights reserved.",
     "disclaimer": "MedVisit provides information and coordination services and is not a healthcare provider."
+  },
+  "charts": {
+    "viewToggle": "Chart or table view",
+    "showChart": "Show chart",
+    "showTable": "Show table",
+    "noData": "No data for this period"
   }
 }
