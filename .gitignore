@@ -48,3 +48,7 @@ next-env.d.ts
 /playwright-report
 /test-results
 /blob-report
+
+# Custom CA bundles for builds behind TLS-inspecting proxies
+/certs
+!/docker/no-build-ca.pem

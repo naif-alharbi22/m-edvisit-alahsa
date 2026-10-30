@@ -30,7 +30,6 @@ export const PROTECTED_ROUTES: { prefix: string; roles: readonly AppRole[] }[] =
   { prefix: "/hotel", roles: ["HOTEL_MANAGER"] },
   { prefix: "/dashboard", roles: ROLES },
   { prefix: "/profile", roles: ROLES },
-  { prefix: "/notifications", roles: ROLES },
 ];
 
 /** Matches a path against a prefix on segment boundaries ("/hotel" ≠ "/hotels"). */
