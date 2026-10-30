@@ -42,7 +42,7 @@ export function TriageClient({ reports, isAuthenticated, maxMb }: { reports: Pas
         const code = data?.details?.code ?? data?.code;
         if (res.status === 503) setError(t("errors.aiUnavailable"));
         else if (res.status === 429) setError(t("errors.rateLimited"));
-        else if (code === "FILE_TOO_LARGE") setError(t("errors.fileTooLarge", { size: maxMb }));
+        else if (code === "FILE_TOO_LARGE" || res.status === 413) setError(t("errors.fileTooLarge", { size: maxMb }));
         else if (code === "UNSUPPORTED_TYPE") setError(t("errors.unsupportedType"));
         else setError(t("errors.failed"));
         return;

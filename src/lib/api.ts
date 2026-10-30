@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { ZodError, type ZodType } from "zod";
-import { AppError, BadRequestError, TooManyRequestsError } from "@/server/errors";
+import { AppError, BadRequestError, ForbiddenError, TooManyRequestsError } from "@/server/errors";
 import { logger } from "@/lib/logger";
 
 export interface ApiErrorBody {
@@ -61,10 +61,46 @@ export function errorResponse(err: unknown): NextResponse<ApiErrorBody> {
 
 type Handler<C> = (req: NextRequest, ctx: C) => Promise<Response>;
 
-/** Wraps a route handler with uniform error handling. */
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+function hostOf(url: string | undefined | null): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Defense in depth against cross-site request forgery (session cookies are
+ * already SameSite=Lax): browsers send an Origin header on state-changing
+ * requests, and it must match this deployment. Requests without an Origin
+ * (server-to-server, CLI) are allowed.
+ */
+export function assertSameOrigin(req: Request) {
+  if (SAFE_METHODS.has(req.method)) return;
+  const origin = req.headers.get("origin");
+  if (!origin) return;
+  const originHost = hostOf(origin);
+  const allowed = new Set(
+    [
+      req.headers.get("x-forwarded-host"),
+      req.headers.get("host"),
+      hostOf(process.env.APP_URL),
+      hostOf(process.env.NEXTAUTH_URL),
+    ].filter((h): h is string => Boolean(h))
+  );
+  if (!originHost || !allowed.has(originHost)) {
+    throw new ForbiddenError("Cross-origin request rejected");
+  }
+}
+
+/** Wraps a route handler with uniform error handling and an origin check. */
 export function withErrorHandling<C = unknown>(handler: Handler<C>): Handler<C> {
   return async (req, ctx) => {
     try {
+      assertSameOrigin(req);
       return await handler(req, ctx);
     } catch (err) {
       return errorResponse(err);

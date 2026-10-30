@@ -17,6 +17,13 @@ export const POST = withErrorHandling(async (req) => {
   enforceRateLimit("triage", user?.id ?? clientIp(req));
   const openai = getOpenAI();
 
+  // Reject oversized uploads before buffering the body into memory.
+  const maxBytes = Number(process.env.MAX_UPLOAD_MB ?? 10) * 1024 * 1024;
+  const declared = Number(req.headers.get("content-length") ?? 0);
+  if (declared > maxBytes + 64 * 1024) {
+    return NextResponse.json({ error: "File is too large", code: "BAD_REQUEST", details: { code: "FILE_TOO_LARGE" } }, { status: 413 });
+  }
+
   const formData = await req.formData().catch(() => {
     throw new BadRequestError("Expected multipart form data");
   });
@@ -24,7 +31,6 @@ export const POST = withErrorHandling(async (req) => {
   const locale = formData.get("locale") === "ar" ? "ar" : "en";
   if (!(file instanceof File) || file.size === 0) throw new BadRequestError("No file provided");
 
-  const maxBytes = Number(process.env.MAX_UPLOAD_MB ?? 10) * 1024 * 1024;
   if (file.size > maxBytes) throw new BadRequestError("File is too large", { code: "FILE_TOO_LARGE" });
 
   const bytes = new Uint8Array(await file.arrayBuffer());

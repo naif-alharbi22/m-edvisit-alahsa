@@ -176,3 +176,40 @@ describe("authentication and authorization", () => {
     expect((await myAppointments.GET(req("/api/me/appointments"), undefined)).status).toBe(401);
   });
 });
+
+describe("request hardening", () => {
+  it("rejects cross-origin state-changing requests", async () => {
+    as(patient);
+    const res = await myAppointments.POST(
+      req("/api/me/appointments", {
+        method: "POST",
+        body: { facilityId: facility.id, specialty: "Cardiology", scheduledAt: futureAt(50).toISOString() },
+        headers: { origin: "https://evil.example", host: "localhost:3000" },
+      }),
+      undefined
+    );
+    expect(res.status).toBe(403);
+    const same = await myAppointments.POST(
+      req("/api/me/appointments", {
+        method: "POST",
+        body: { facilityId: facility.id, specialty: "Cardiology", scheduledAt: futureAt(51).toISOString() },
+        headers: { origin: "http://localhost:3000", host: "localhost:3000" },
+      }),
+      undefined
+    );
+    expect(same.status).toBe(201);
+  });
+
+  it("rejects oversized uploads before reading them", async () => {
+    process.env.OPENAI_API_KEY = "sk-test";
+    try {
+      const res = await triage.POST(
+        new NextRequest(`${BASE}/api/triage`, { method: "POST", headers: { "content-length": String(50 * 1024 * 1024) }, body: "x" }),
+        undefined
+      );
+      expect(res.status).toBe(413);
+    } finally {
+      delete process.env.OPENAI_API_KEY;
+    }
+  });
+});
