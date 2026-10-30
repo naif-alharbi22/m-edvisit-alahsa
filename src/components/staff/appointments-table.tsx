@@ -51,6 +51,7 @@ export function AppointmentsTable({ rows, showFacility = false }: { rows: StaffA
   const [reason, setReason] = useState("");
   const [newTime, setNewTime] = useState("");
   const [busy, setBusy] = useState(false);
+  const [now] = useState(() => Date.now());
 
   const loc = (o: { name: string; nameAr: string | null } | null) => (o ? (f.locale === "ar" && o.nameAr ? o.nameAr : o.name) : null);
 
@@ -87,7 +88,7 @@ export function AppointmentsTable({ rows, showFacility = false }: { rows: StaffA
   }
 
   const transitions = active ? APPOINTMENT_TRANSITIONS[active.status] : [];
-  const isPast = active ? new Date(active.scheduledAt).getTime() < Date.now() : false;
+  const isPast = active ? new Date(active.scheduledAt).getTime() < now : false;
 
   return (
     <>

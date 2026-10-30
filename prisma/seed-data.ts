@@ -920,13 +920,19 @@ export const REPORT_FILES = [
   "lipid-panel.jpg", "eye-exam.pdf", "colonoscopy-findings.pdf", "knee-xray.jpg", "thyroid-panel.pdf",
 ];
 
-export const REVIEW_COMMENTS = [
+export const FACILITY_REVIEW_COMMENTS = [
   "Excellent care and very organized international patient office.",
   "Doctors explained everything clearly. Highly recommended.",
   "Smooth experience from booking to discharge.",
   "Good facility, waiting time could be shorter.",
   "Staff were warm and spoke my language. Thank you!",
+  "Professional team and modern equipment.",
+];
+
+export const HOTEL_REVIEW_COMMENTS = [
   "Clean rooms and the shuttle to the hospital was very convenient.",
   "Comfortable stay during my recovery, helpful reception team.",
   "Great value for money.",
+  "Quiet rooms and kind staff who helped with my wheelchair.",
+  "Perfect location for my hospital visits.",
 ];

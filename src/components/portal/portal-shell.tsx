@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   BarChart3,
@@ -79,8 +79,6 @@ export function PortalShell({ portal, subtitle, user, unreadNotifications, child
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
-  useEffect(() => setOpen(false), [pathname]);
-
   const isActive = (item: NavItem) => (item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`));
 
   const nav = (
@@ -91,6 +89,7 @@ export function PortalShell({ portal, subtitle, user, unreadNotifications, child
           <Link
             key={item.href}
             href={item.href}
+            onClick={() => setOpen(false)}
             aria-current={active ? "page" : undefined}
             className={cn(
               "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",

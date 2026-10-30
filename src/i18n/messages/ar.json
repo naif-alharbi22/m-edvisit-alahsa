@@ -255,7 +255,8 @@
     "reviews": "تقييمات النزلاء",
     "noReviews": "لا توجد تقييمات بعد.",
     "backToList": "جميع الفنادق",
-    "viewHotel": "عرض الفندق"
+    "viewHotel": "عرض الفندق",
+    "perNightShort": "ليلة"
   },
   "chat": {
     "title": "المساعد الطبي",
@@ -310,7 +311,8 @@
       "activeStays": "الإقامات القادمة",
       "reports": "التقارير المحللة",
       "unread": "إشعارات غير مقروءة"
-    }
+    },
+    "history": "السجل"
   },
   "review": {
     "title": "قيّم {name}",

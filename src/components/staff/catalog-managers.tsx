@@ -77,7 +77,6 @@ export interface PackageRow {
 
 export function PackagesManager({ rows, facilityId }: { rows: PackageRow[]; facilityId?: string }) {
   const t = useTranslations("hospital");
-  const ta = useTranslations("analytics");
   const tc = useTranslations("common");
   const f = useFormatters();
   return (

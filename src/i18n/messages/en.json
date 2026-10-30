@@ -255,7 +255,8 @@
     "reviews": "Guest reviews",
     "noReviews": "No reviews yet.",
     "backToList": "All hotels",
-    "viewHotel": "View hotel"
+    "viewHotel": "View hotel",
+    "perNightShort": "night"
   },
   "chat": {
     "title": "Medical Assistant",
@@ -310,7 +311,8 @@
       "activeStays": "Upcoming stays",
       "reports": "Analyzed reports",
       "unread": "Unread notifications"
-    }
+    },
+    "history": "History"
   },
   "review": {
     "title": "Rate {name}",

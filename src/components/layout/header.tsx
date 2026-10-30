@@ -33,8 +33,6 @@ export function Header() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  useEffect(() => setMobileOpen(false), [pathname]);
-
   const user = session?.user;
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
@@ -112,17 +110,17 @@ export function Header() {
           >
             <div className="space-y-1 p-4">
               {LINKS.map((l) => (
-                <Link key={l.href} href={l.href} className="block rounded-md px-2 py-2 text-sm font-medium hover:bg-muted">
+                <Link key={l.href} href={l.href} onClick={() => setMobileOpen(false)} className="block rounded-md px-2 py-2 text-sm font-medium hover:bg-muted">
                   {t(l.key)}
                 </Link>
               ))}
               {status === "unauthenticated" && (
                 <div className="flex gap-2 pt-2">
                   <Button asChild variant="outline" size="sm" className="flex-1">
-                    <Link href="/login">{tc("signIn")}</Link>
+                    <Link href="/login" onClick={() => setMobileOpen(false)}>{tc("signIn")}</Link>
                   </Button>
                   <Button asChild size="sm" className="flex-1">
-                    <Link href="/register">{tc("getStarted")}</Link>
+                    <Link href="/register" onClick={() => setMobileOpen(false)}>{tc("getStarted")}</Link>
                   </Button>
                 </div>
               )}

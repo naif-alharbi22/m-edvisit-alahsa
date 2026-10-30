@@ -22,7 +22,8 @@ import {
   LAST_NAMES,
   URGENCY_WEIGHTS,
   REPORT_FILES,
-  REVIEW_COMMENTS,
+  FACILITY_REVIEW_COMMENTS,
+  HOTEL_REVIEW_COMMENTS,
   type SeedFacility,
   type SeedHotel,
 } from "./seed-data";
@@ -377,7 +378,7 @@ async function main() {
 
   // ── Hotel bookings (inventory-aware: never exceeds a room type's allotment) ──
   const bookingRows: Prisma.HotelBookingCreateManyInput[] = [];
-  const bookingMeta: { userId: string; hotelIdx: number; status: string }[] = [];
+  const bookingMeta: { userId: string; hotelIdx: number; status: string; checkOut: Date }[] = [];
   const baseDay = daysFromToday(-420).getTime();
   const occupancy = new Map<string, Int16Array>();
   const dayIndex = (d: Date) => Math.round((d.getTime() - baseDay) / DAY);
@@ -445,7 +446,7 @@ async function main() {
           createdAt,
           updatedAt: createdAt,
         });
-        bookingMeta.push({ userId, hotelIdx: hIdx, status });
+        bookingMeta.push({ userId, hotelIdx: hIdx, status, checkOut });
         return true;
       }
     }
@@ -476,7 +477,8 @@ async function main() {
     if (reviewedFacility.has(key)) continue;
     reviewedFacility.add(key);
     const rating = Math.max(1, Math.min(5, Math.round(facility.seed.baseRating + (rand() - 0.5) * 1.8)));
-    reviewRows.push({ userId: a.userId, facilityId: facility.id, rating, comment: rand() < 0.7 ? pick(REVIEW_COMMENTS) : null });
+    const reviewedAt = new Date(Math.min(Date.now() - 3_600_000, a.scheduledAt.getTime() + randInt(1, 6) * DAY));
+    reviewRows.push({ userId: a.userId, facilityId: facility.id, rating, comment: rand() < 0.7 ? pick(FACILITY_REVIEW_COMMENTS) : null, createdAt: reviewedAt, updatedAt: reviewedAt });
   }
   for (const b of bookingMeta) {
     if (b.status !== "CHECKED_OUT" || rand() > 0.4) continue;
@@ -485,7 +487,8 @@ async function main() {
     if (reviewedHotel.has(key)) continue;
     reviewedHotel.add(key);
     const rating = Math.max(1, Math.min(5, Math.round(hotel.seed.baseRating + (rand() - 0.5) * 1.8)));
-    reviewRows.push({ userId: b.userId, hotelId: hotel.id, rating, comment: rand() < 0.7 ? pick(REVIEW_COMMENTS) : null });
+    const reviewedAt = new Date(Math.min(Date.now() - 3_600_000, b.checkOut.getTime() + randInt(1, 5) * DAY));
+    reviewRows.push({ userId: b.userId, hotelId: hotel.id, rating, comment: rand() < 0.7 ? pick(HOTEL_REVIEW_COMMENTS) : null, createdAt: reviewedAt, updatedAt: reviewedAt });
   }
   await prisma.review.createMany({ data: reviewRows });
 

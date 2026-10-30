@@ -1,95 +1,99 @@
-"use client";
-
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { MapPin, Package, Star, Users, ShieldCheck } from "lucide-react";
+import { Link } from "@/i18n/navigation";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Star, MapPin, Phone, ExternalLink, Users, Package } from "lucide-react";
-import { motion } from "framer-motion";
+import { formatCurrency } from "@/lib/format";
 
-interface Facility {
-  id: string;
+export interface FacilityCardData {
+  slug: string;
   name: string;
   nameAr: string | null;
+  type: string;
   description: string | null;
   descriptionAr: string | null;
-  city: string;
   address: string | null;
-  phone: string | null;
   rating: number;
+  reviewCount: number;
   specialties: string[];
+  accreditations: string[];
   doctors: unknown[];
-  treatmentPackages: unknown[];
+  treatmentPackages: { price: number; currency: string }[];
 }
 
-interface FacilityCardProps {
-  facility: Facility;
-  onViewDetails: (id: string) => void;
-}
-
-export function FacilityCard({ facility, onViewDetails }: FacilityCardProps) {
+export function FacilityCard({ facility }: { facility: FacilityCardData }) {
   const locale = useLocale();
-  const displayName = locale === "ar" && facility.nameAr ? facility.nameAr : facility.name;
-  const displayDesc = locale === "ar" && facility.descriptionAr ? facility.descriptionAr : facility.description;
+  const t = useTranslations("facilities");
+  const name = locale === "ar" && facility.nameAr ? facility.nameAr : facility.name;
+  const description = locale === "ar" && facility.descriptionAr ? facility.descriptionAr : facility.description;
+  const minPrice = facility.treatmentPackages.length ? Math.min(...facility.treatmentPackages.map((p) => p.price)) : null;
 
   return (
-    <motion.div
-      whileHover={{ y: -3, transition: { type: "spring", stiffness: 300, damping: 25 } }}
-    >
-      <Card className="hover:shadow-lg transition-shadow h-full">
-        <CardHeader>
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1">
-              <CardTitle className="text-lg">{displayName}</CardTitle>
-              {facility.address && (
-                <div className="flex items-center gap-1 mt-1 text-sm text-muted-foreground">
-                  <MapPin className="h-3.5 w-3.5 shrink-0" />
-                  <span>{facility.address}</span>
-                </div>
-              )}
-            </div>
-            <div className="flex items-center gap-1 shrink-0">
-              <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-              <span className="text-sm font-medium">{facility.rating.toFixed(1)}</span>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {displayDesc && (
-            <p className="text-sm text-muted-foreground line-clamp-2">{displayDesc}</p>
-          )}
-          <div className="flex flex-wrap gap-1.5">
-            {facility.specialties.slice(0, 4).map((s) => (
-              <Badge key={s} variant="secondary" className="text-xs">{s}</Badge>
-            ))}
-            {facility.specialties.length > 4 && (
-              <Badge variant="outline" className="text-xs">+{facility.specialties.length - 4}</Badge>
+    <Card className="flex h-full flex-col transition-shadow hover:shadow-lg">
+      <CardHeader>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="mb-1 text-xs font-medium text-primary">{t(`type.${facility.type}` as never)}</p>
+            <CardTitle className="text-lg">
+              <Link href={`/facilities/${facility.slug}`} className="hover:underline">
+                {name}
+              </Link>
+            </CardTitle>
+            {facility.address && (
+              <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
+                <MapPin className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{facility.address}</span>
+              </p>
             )}
           </div>
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <div className="flex items-center gap-1">
-              <Users className="h-3.5 w-3.5" />
-              <span>{facility.doctors.length} Doctors</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Package className="h-3.5 w-3.5" />
-              <span>{facility.treatmentPackages.length} Packages</span>
-            </div>
+          <div className="flex shrink-0 items-center gap-1" title={`${facility.reviewCount}`}>
+            <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" aria-hidden />
+            <span className="text-sm font-medium">{facility.rating.toFixed(1)}</span>
           </div>
-        </CardContent>
-        <CardFooter className="flex items-center justify-between gap-2">
-          {facility.phone && (
-            <a href={`tel:${facility.phone}`} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-              <Phone className="h-3 w-3" />
-              {facility.phone}
-            </a>
+        </div>
+      </CardHeader>
+      <CardContent className="flex-1 space-y-3">
+        {description && <p className="line-clamp-2 text-sm text-muted-foreground">{description}</p>}
+        <div className="flex flex-wrap gap-1.5">
+          {facility.accreditations.map((a) => (
+            <Badge key={a} variant="outline" className="gap-1 text-xs">
+              <ShieldCheck className="h-3 w-3 text-primary" /> {a}
+            </Badge>
+          ))}
+          {facility.specialties.slice(0, 4).map((s) => (
+            <Badge key={s} variant="secondary" className="text-xs">
+              {s}
+            </Badge>
+          ))}
+          {facility.specialties.length > 4 && (
+            <Badge variant="outline" className="text-xs">
+              +{facility.specialties.length - 4}
+            </Badge>
           )}
-          <Button size="sm" variant="outline" className="ml-auto gap-1" onClick={() => onViewDetails(facility.id)}>
-            <ExternalLink className="h-3 w-3" />
-            Details
-          </Button>
-        </CardFooter>
-      </Card>
-    </motion.div>
+        </div>
+        <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <Users className="h-3.5 w-3.5" /> {t("doctorsCount", { count: facility.doctors.length })}
+          </span>
+          <span className="flex items-center gap-1">
+            <Package className="h-3.5 w-3.5" /> {t("packagesCount", { count: facility.treatmentPackages.length })}
+          </span>
+        </div>
+      </CardContent>
+      <CardFooter className="flex items-center justify-between gap-2">
+        {minPrice !== null ? (
+          <p className="text-sm">
+            <span className="text-muted-foreground">{t("priceFrom")} </span>
+            <span className="font-semibold">{formatCurrency(minPrice, locale)}</span>
+          </p>
+        ) : (
+          <span />
+        )}
+        <Button asChild size="sm">
+          <Link href={`/facilities/${facility.slug}`}>{t("viewDetails")}</Link>
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }

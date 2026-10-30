@@ -50,7 +50,7 @@ export function BookingsTable({ rows, showHotel = false }: { rows: StaffBookingR
   const [busy, setBusy] = useState(false);
 
   const loc = (o: { name: string; nameAr: string | null }) => (f.locale === "ar" && o.nameAr ? o.nameAr : o.name);
-  const today = new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10);
+  const [today] = useState(() => new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10));
 
   const open = (row: StaffBookingRow) => {
     setActive(row);

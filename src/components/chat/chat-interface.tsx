@@ -1,134 +1,141 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+import { AnimatePresence, motion } from "framer-motion";
+import { Bot, Send, Trash2, User } from "lucide-react";
+import { toast } from "sonner";
+import { Link } from "@/i18n/navigation";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Send, Bot, User } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { apiFetch } from "@/lib/api-client";
 
 interface Message {
+  id: string;
   role: "user" | "assistant";
   content: string;
-  id: number;
 }
 
-export function ChatInterface() {
+interface ChatInterfaceProps {
+  initialMessages: Message[];
+  isAuthenticated: boolean;
+  loginHref: string;
+}
+
+export function ChatInterface({ initialMessages, isAuthenticated, loginHref }: ChatInterfaceProps) {
   const t = useTranslations("chat");
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 0,
-      role: "assistant",
-      content: "Hello! I'm your MedVisit assistant for medical tourism in Al-Ahsa. How can I help you today? You can ask about facilities, specialties, treatment packages, or travel arrangements.",
-    },
-  ]);
+  const tc = useTranslations("common");
+  const welcome: Message = { id: "welcome", role: "assistant", content: t("welcome") };
+  const [messages, setMessages] = useState<Message[]>(initialMessages.length ? initialMessages : [welcome]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const msgIdRef = useRef(1);
+  const idRef = useRef(0);
+  const nextId = () => `m${Date.now()}-${idRef.current++}`;
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isStreaming) return;
+  const setAssistant = (id: string, content: string) =>
+    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, content } : m)));
 
-    const userMessage = input.trim();
+  const send = async (text: string) => {
+    const userMessage = text.trim();
+    if (!userMessage || isStreaming) return;
     setInput("");
-
-    const userMsgId = msgIdRef.current++;
-    const assistantMsgId = msgIdRef.current++;
-
-    setMessages((prev) => [...prev, { role: "user", content: userMessage, id: userMsgId }]);
+    const userMsg: Message = { id: nextId(), role: "user", content: userMessage };
+    const assistantId = nextId();
+    const history = [...messages.filter((m) => m.id !== "welcome"), userMsg].map((m) => ({ role: m.role, content: m.content }));
+    setMessages((prev) => [...prev, userMsg, { id: assistantId, role: "assistant", content: "" }]);
     setIsStreaming(true);
 
     try {
-      const chatMessages = [...messages, { role: "user" as const, content: userMessage }]
-        .map((m) => ({ role: m.role, content: m.content }));
-
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: chatMessages }),
+        body: JSON.stringify({ messages: history.slice(-20) }),
       });
-
-      if (!res.ok) throw new Error("Chat request failed");
-
-      const reader = res.body?.getReader();
+      if (!res.ok || !res.body) {
+        setAssistant(assistantId, res.status === 503 ? t("aiUnavailable") : res.status === 429 ? t("rateLimited") : t("error"));
+        return;
+      }
+      const reader = res.body.getReader();
       const decoder = new TextDecoder();
-
-      if (!reader) throw new Error("No reader available");
-
-      let assistantContent = "";
-      setMessages((prev) => [...prev, { role: "assistant", content: "", id: assistantMsgId }]);
-
-      while (true) {
+      let buffer = "";
+      let content = "";
+      for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
-
-        const text = decoder.decode(value, { stream: true });
-        const lines = text.split("\n");
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") break;
-
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.content) {
-                assistantContent += parsed.content;
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  const idx = updated.findIndex((m) => m.id === assistantMsgId);
-                  if (idx !== -1) {
-                    updated[idx] = { ...updated[idx], content: assistantContent };
-                  }
-                  return updated;
-                });
-              }
-            } catch {
-              // skip malformed chunks
+        buffer += decoder.decode(value, { stream: true });
+        // SSE events are separated by a blank line; keep any partial event in the buffer.
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? "";
+        for (const event of events) {
+          const line = event.split("\n").find((l) => l.startsWith("data: "));
+          if (!line) continue;
+          const data = line.slice(6);
+          if (data === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(data) as { content?: string; error?: string };
+            if (parsed.error) throw new Error(parsed.error);
+            if (parsed.content) {
+              content += parsed.content;
+              setAssistant(assistantId, content);
             }
+          } catch {
+            if (!content) setAssistant(assistantId, t("error"));
           }
         }
       }
+      if (!content) setAssistant(assistantId, t("error"));
     } catch {
-      const errId = msgIdRef.current++;
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "I'm sorry, I encountered an error. Please try again.", id: errId },
-      ]);
+      setAssistant(assistantId, t("error"));
     } finally {
       setIsStreaming(false);
       inputRef.current?.focus();
     }
   };
 
-  const suggestions = [
-    "I need a cardiologist in Al-Ahsa",
-    "What are the best hospitals for orthopedics?",
-    "How much does a cardiac check-up cost?",
-    "Help me plan my medical trip to Saudi Arabia",
-  ];
+  const clearHistory = async () => {
+    try {
+      await apiFetch("/api/chat", { method: "DELETE" });
+      setMessages([welcome]);
+      toast.success(t("historyCleared"));
+    } catch {
+      toast.error(tc("error"));
+    }
+  };
+
+  const suggestions = [t("suggestion1"), t("suggestion2"), t("suggestion3"), t("suggestion4")];
+  const last = messages[messages.length - 1];
 
   return (
-    <div className="flex flex-col h-[calc(100vh-12rem)] max-h-[700px]">
-      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 pr-2 mb-4">
+    <div className="flex h-[calc(100vh-14rem)] max-h-[720px] min-h-[420px] flex-col">
+      <div className="mb-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>{t("disclaimer")}</span>
+        {isAuthenticated ? (
+          messages.length > 1 && (
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={clearHistory} disabled={isStreaming}>
+              <Trash2 className="h-3.5 w-3.5" /> {t("clearHistory")}
+            </Button>
+          )
+        ) : (
+          <Link href={loginHref} className="text-primary hover:underline">
+            {t("signInToSave")}
+          </Link>
+        )}
+      </div>
+      <div ref={scrollRef} className="mb-4 flex-1 space-y-4 overflow-y-auto pe-2" aria-live="polite">
         <AnimatePresence initial={false}>
           {messages.map((message) => (
             <motion.div
               key={message.id}
-              initial={{ opacity: 0, x: message.role === "user" ? 20 : -20, y: 8 }}
-              animate={{ opacity: 1, x: 0, y: 0 }}
-              transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25 }}
               className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}
             >
               {message.role === "assistant" && (
@@ -139,21 +146,18 @@ export function ChatInterface() {
                 </Avatar>
               )}
               <div
-                className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                  message.role === "user"
-                    ? "bg-primary text-primary-foreground rounded-br-md"
-                    : "bg-muted rounded-bl-md"
+                className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                  message.role === "user" ? "rounded-ee-md bg-primary text-primary-foreground" : "rounded-es-md bg-muted"
                 }`}
+                dir="auto"
               >
                 {message.content ? (
-                  <span className={isStreaming && message === messages[messages.length - 1] && message.role === "assistant" ? "streaming-cursor" : ""}>
-                    {message.content}
-                  </span>
+                  <span className={isStreaming && message === last && message.role === "assistant" ? "streaming-cursor" : ""}>{message.content}</span>
                 ) : (
-                  <span className="thinking-dots">
-                    <span></span>
-                    <span></span>
-                    <span></span>
+                  <span className="thinking-dots" aria-label={t("thinking")}>
+                    <span />
+                    <span />
+                    <span />
                   </span>
                 )}
               </div>
@@ -170,41 +174,21 @@ export function ChatInterface() {
       </div>
 
       {messages.length === 1 && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.4 }}
-          className="flex flex-wrap gap-2 mb-4"
-        >
-          {suggestions.map((s, i) => (
-            <motion.div
-              key={s}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 + i * 0.08 }}
-            >
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-xs"
-                onClick={() => {
-                  setInput(s);
-                  inputRef.current?.focus();
-                }}
-              >
-                {s}
-              </Button>
-            </motion.div>
+        <div className="mb-4 flex flex-wrap gap-2">
+          {suggestions.map((s) => (
+            <Button key={s} variant="outline" size="sm" className="h-auto whitespace-normal py-1.5 text-start text-xs" onClick={() => send(s)}>
+              {s}
+            </Button>
           ))}
-        </motion.div>
+        </div>
       )}
 
-      <motion.form
-        onSubmit={handleSubmit}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void send(input);
+        }}
         className="flex gap-2"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
       >
         <Input
           ref={inputRef}
@@ -212,12 +196,15 @@ export function ChatInterface() {
           onChange={(e) => setInput(e.target.value)}
           placeholder={t("placeholder")}
           disabled={isStreaming}
+          maxLength={4000}
           className="flex-1"
+          aria-label={t("placeholder")}
+          dir="auto"
         />
-        <Button type="submit" size="icon" disabled={isStreaming || !input.trim()}>
-          <Send className="h-4 w-4" />
+        <Button type="submit" size="icon" disabled={isStreaming || !input.trim()} aria-label={t("send")}>
+          <Send className="h-4 w-4 rtl:-scale-x-100" />
         </Button>
-      </motion.form>
+      </form>
     </div>
   );
 }
