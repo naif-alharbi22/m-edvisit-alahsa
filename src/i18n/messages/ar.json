@@ -559,7 +559,10 @@
     "otherStatuses": "مجدولة وملغاة وعدم حضور",
     "avgVisitValue": "متوسط قيمة الزيارة",
     "noDataShort": "لا توجد بيانات بعد",
-    "roomsOccupied": "غرف مشغولة (من {total})"
+    "roomsOccupied": "غرف مشغولة (من {total})",
+    "funnelHint": "من المرضى الذين سجّلوا خلال هذه الفترة",
+    "urgencyLevel": "الأولوية",
+    "stage": "المرحلة"
   },
   "hospital": {
     "portalTitle": "بوابة المستشفى",

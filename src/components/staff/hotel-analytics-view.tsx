@@ -103,9 +103,9 @@ export function HotelAnalyticsView({ data }: { data: HotelAnalytics }) {
                 <tr className="border-b text-xs text-muted-foreground">
                   <th className="py-2 text-start font-medium">{t("roomType")}</th>
                   <th className="w-40 py-2 text-start font-medium">{t("occupancy")}</th>
-                  <th className="py-2 text-end font-medium">{t("nights")}</th>
-                  <th className="py-2 text-end font-medium">{t("adr")}</th>
-                  <th className="py-2 text-end font-medium">{t("roomRevenue")}</th>
+                  <th className="whitespace-nowrap py-2 ps-3 text-end font-medium">{t("nights")}</th>
+                  <th className="whitespace-nowrap py-2 ps-3 text-end font-medium">{t("adr")}</th>
+                  <th className="whitespace-nowrap py-2 ps-3 text-end font-medium">{t("roomRevenue")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -121,9 +121,9 @@ export function HotelAnalyticsView({ data }: { data: HotelAnalytics }) {
                         <span className="w-12 shrink-0 text-end text-xs tabular-nums">{f.percent(r.occupancy)}</span>
                       </div>
                     </td>
-                    <td className="py-2.5 text-end tabular-nums">{f.number(r.soldRoomNights)}</td>
-                    <td className="py-2.5 text-end tabular-nums">{f.currency(Math.round(r.adr))}</td>
-                    <td className="py-2.5 text-end tabular-nums">{f.currency(r.revenue)}</td>
+                    <td className="whitespace-nowrap py-2.5 ps-3 text-end tabular-nums">{f.number(r.soldRoomNights)}</td>
+                    <td className="whitespace-nowrap py-2.5 ps-3 text-end tabular-nums">{f.currency(Math.round(r.adr))}</td>
+                    <td className="whitespace-nowrap py-2.5 ps-3 text-end tabular-nums">{f.currency(r.revenue)}</td>
                   </tr>
                 ))}
               </tbody>

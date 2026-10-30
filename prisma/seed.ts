@@ -245,7 +245,8 @@ async function main() {
       locale: rand() < 0.6 ? "ar" : "en",
       nationality: weighted(NATIONALITY_WEIGHTS),
       phone: `+9${randInt(10, 99)} ${randInt(1000, 9999)} ${randInt(1000, 9999)}`,
-      createdAt: new Date(daysFromToday(-ageDays).getTime() + randInt(6, 22) * 3_600_000),
+      // Never in the future, even for "today" registrations.
+      createdAt: new Date(Math.min(Date.now() - randInt(1, 20) * 3_600_000, daysFromToday(-ageDays).getTime() + randInt(6, 22) * 3_600_000)),
     });
   }
   await prisma.user.createMany({ data: patientRows });

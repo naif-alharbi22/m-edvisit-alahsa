@@ -143,10 +143,10 @@ export function FacilityAnalyticsView({ data }: { data: FacilityAnalytics }) {
                   <thead>
                     <tr className="border-b text-xs text-muted-foreground">
                       <th className="py-2 text-start font-medium">{t("doctor")}</th>
-                      <th className="py-2 text-end font-medium">{t("appointments")}</th>
-                      <th className="py-2 text-end font-medium">{ts("COMPLETED")}</th>
-                      <th className="py-2 text-end font-medium">{t("revenue")}</th>
-                      <th className="py-2 text-end font-medium">{tc("rating")}</th>
+                      <th className="whitespace-nowrap py-2 ps-3 text-end font-medium">{t("appointments")}</th>
+                      <th className="whitespace-nowrap py-2 ps-3 text-end font-medium">{ts("COMPLETED")}</th>
+                      <th className="whitespace-nowrap py-2 ps-3 text-end font-medium">{t("revenue")}</th>
+                      <th className="whitespace-nowrap py-2 ps-3 text-end font-medium">{tc("rating")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -156,10 +156,10 @@ export function FacilityAnalyticsView({ data }: { data: FacilityAnalytics }) {
                           <p className="font-medium">{f.locale === "ar" && d.nameAr ? d.nameAr : d.name}</p>
                           <p className="text-xs text-muted-foreground">{d.specialty}</p>
                         </td>
-                        <td className="py-2 text-end tabular-nums">{f.number(d.appointments)}</td>
-                        <td className="py-2 text-end tabular-nums">{f.number(d.completed)}</td>
-                        <td className="py-2 text-end tabular-nums">{f.currency(d.revenue)}</td>
-                        <td className="py-2 text-end tabular-nums">{d.rating.toFixed(1)}</td>
+                        <td className="whitespace-nowrap py-2 ps-3 text-end tabular-nums">{f.number(d.appointments)}</td>
+                        <td className="whitespace-nowrap py-2 ps-3 text-end tabular-nums">{f.number(d.completed)}</td>
+                        <td className="whitespace-nowrap py-2 ps-3 text-end tabular-nums">{f.currency(d.revenue)}</td>
+                        <td className="whitespace-nowrap py-2 ps-3 text-end tabular-nums">{d.rating.toFixed(1)}</td>
                       </tr>
                     ))}
                   </tbody>

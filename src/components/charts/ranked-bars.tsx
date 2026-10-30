@@ -19,7 +19,7 @@ export function RankedBars({
   items,
   formatValue,
   color = SERIES[0],
-  maxItems = 8,
+  maxItems = 11,
 }: {
   items: RankedItem[];
   formatValue: (v: number) => string;

@@ -559,7 +559,10 @@
     "otherStatuses": "Scheduled, cancelled & no-show",
     "avgVisitValue": "Average visit value",
     "noDataShort": "No data yet",
-    "roomsOccupied": "Rooms occupied (of {total})"
+    "roomsOccupied": "Rooms occupied (of {total})",
+    "funnelHint": "Of patients who registered in this period",
+    "urgencyLevel": "Urgency",
+    "stage": "Stage"
   },
   "hospital": {
     "portalTitle": "Hospital Portal",

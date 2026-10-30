@@ -169,7 +169,7 @@ export async function getPlatformAnalytics(rangeKey: AnalyticsRange, now = new D
     appointmentsByStatus: apptStatus.map((s) => ({ status: s.status, value: s._count })),
     triageBySpecialty: topWithOther(
       reportsBySpecialty.map((r) => ({ label: r.specialty ?? "__unknown__", value: r._count })),
-      7
+      10
     ),
     urgencyMix: reportsByUrgency.map((r) => ({ urgency: r.urgency!, value: r._count })),
     nationalities: topWithOther(
