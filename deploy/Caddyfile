@@ -1,0 +1,27 @@
+# Reverse proxy with automatic HTTPS (Let's Encrypt) for MedVisit.
+# Set DOMAIN (and optionally ACME_EMAIL) in .env and run:
+#   docker compose --profile proxy up -d
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		-Server
+	}
+
+	# Uploads for AI triage are capped by the app (MAX_UPLOAD_MB); keep a hard ceiling here.
+	request_body {
+		max_size 15MB
+	}
+
+	reverse_proxy app:3000 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Real-IP {remote_host}
+		# Server-sent events for the chat assistant must not be buffered.
+		flush_interval -1
+	}
+}

@@ -12,8 +12,8 @@ export const requiredText = (min: number, max: number) => z.string().trim().min(
 export const optionalUrl = z.preprocess(emptyToNull, z.url().max(500).nullable().optional());
 
 export const optionalEmail = z.preprocess(
-  emptyToNull,
-  z.email().max(200).transform((v) => v.toLowerCase()).nullable().optional()
+  (v) => (typeof v === "string" ? (v.trim() === "" ? null : v.trim().toLowerCase()) : v),
+  z.email().max(200).nullable().optional()
 );
 
 export const optionalId = z.preprocess(emptyToNull, z.string().min(1).max(64).nullable().optional());

@@ -1,0 +1,127 @@
+# MedVisit Al-Ahsa — production-style stack.
+#
+#   cp .env.example .env   # then set the secrets
+#   docker compose up -d --build
+#
+# Optional automatic HTTPS (requires DOMAIN pointing at this host):
+#   docker compose --profile proxy up -d --build
+
+name: medvisit
+
+x-app-env: &app-env
+  NODE_ENV: production
+  DATABASE_URL: postgresql://${POSTGRES_USER:-medvisit}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-medvisit}?schema=public
+  DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
+  NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?Set NEXTAUTH_SECRET in .env (openssl rand -base64 32)}
+  NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+  APP_URL: ${APP_URL:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_TRIAGE_MODEL: ${OPENAI_TRIAGE_MODEL:-gpt-4o}
+  OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o-mini}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_SECURE: ${SMTP_SECURE:-false}
+  EMAIL_FROM: ${EMAIL_FROM:-MedVisit Al-Ahsa <no-reply@medvisit.local>}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+  MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-10}
+  DEMO_MODE: ${DEMO_MODE:-false}
+  SEED_PASSWORD: ${SEED_PASSWORD:-MedVisit@2026}
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-medvisit}
+      POSTGRES_USER: ${POSTGRES_USER:-medvisit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # Not published by default; uncomment to reach Postgres from the host.
+    # ports:
+    #   - "5432:5432"
+
+  migrate:
+    build:
+      context: .
+      target: migrator
+      args:
+        APP_VERSION: ${APP_VERSION:-1.0.0}
+      secrets: [build_ca]
+    image: medvisit-migrate:${APP_VERSION:-1.0.0}
+    environment:
+      <<: *app-env
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_NAME: ${ADMIN_NAME:-Platform Administrator}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      target: runner
+      args:
+        APP_VERSION: ${APP_VERSION:-1.0.0}
+      secrets: [build_ca]
+    image: medvisit-app:${APP_VERSION:-1.0.0}
+    restart: unless-stopped
+    environment: *app-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["proxy"]
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
+
+secrets:
+  # Optional extra CA bundle for builds behind a TLS-inspecting proxy.
+  build_ca:
+    file: ${BUILD_CA_CERT:-/dev/null}

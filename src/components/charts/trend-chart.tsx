@@ -39,7 +39,7 @@ export function TrendChart({ data, seriesLabel, formatValue, formatTick, color =
             axisLine={false}
             tick={{ fill: "var(--chart-muted-ink)", fontSize: 11 }}
             tickFormatter={formatTick ?? formatValue}
-            width={52}
+            width={64}
             domain={[0, domainMax ?? "auto"]}
             allowDecimals={false}
           />

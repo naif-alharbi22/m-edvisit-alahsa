@@ -171,7 +171,9 @@ export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
   logger: {
     error(code, metadata) {
-      logger.error(`next-auth: ${code}`, { metadata: metadata instanceof Error ? metadata.message : metadata });
+      // Aborted client session fetches (e.g. during a full page navigation) are expected noise.
+      const log = code === "CLIENT_FETCH_ERROR" ? logger.debug : logger.error;
+      log(`next-auth: ${code}`, { metadata: metadata instanceof Error ? metadata.message : metadata });
     },
     warn(code) {
       logger.warn(`next-auth: ${code}`);

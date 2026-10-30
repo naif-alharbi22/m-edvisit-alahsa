@@ -13,16 +13,30 @@ export function sniffMimeType(bytes: Uint8Array): TriageMimeType | null {
   return null;
 }
 
+/** Accepts a string (or number); anything missing/null becomes the fallback — never the text "undefined". */
+const text = (max: number, fallback: string) =>
+  z
+    .preprocess((v) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : fallback), z.string().trim().max(max))
+    .catch(fallback);
+
+/** Accepts an array of strings or a single string; drops non-text items. */
 const stringArray = z.preprocess(
-  (v) => (Array.isArray(v) ? v : typeof v === "string" && v ? [v] : []),
-  z.array(z.coerce.string().trim().max(500)).max(20)
+  (v) => {
+    const arr = Array.isArray(v) ? v : typeof v === "string" && v.trim() ? [v] : [];
+    return arr
+      .filter((x) => typeof x === "string" || typeof x === "number")
+      .map((x) => String(x).trim().slice(0, 500))
+      .filter(Boolean)
+      .slice(0, 20);
+  },
+  z.array(z.string())
 );
 
 export const triageAnalysisSchema = z.object({
   findings: stringArray,
-  recommendedSpecialty: z.coerce.string().trim().max(80).catch("General Medicine"),
+  recommendedSpecialty: text(80, "General Medicine").transform((v) => v || "General Medicine"),
   urgency: z.preprocess((v) => String(v ?? "").toLowerCase(), z.enum(["low", "moderate", "high", "emergency"]).catch("low")),
-  summary: z.coerce.string().trim().max(3000).catch(""),
+  summary: text(3000, ""),
   suggestedActions: stringArray,
   recommendedTests: stringArray,
 });

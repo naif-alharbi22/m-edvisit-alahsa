@@ -37,15 +37,15 @@ export async function getFacilityAnalytics(facilityId: string, rangeKey: Analyti
     prisma.appointment.count({ where: { facilityId, status: "PENDING", scheduledAt: { gte: now } } }),
     prisma.appointment.findMany({ where: inWindow, distinct: ["userId"], select: { userId: true } }),
     prisma.appointment.findMany({ where: inPrev, distinct: ["userId"], select: { userId: true } }),
-    prisma.appointment.groupBy({ by: ["specialty"], where: inWindow, _count: true }),
+    prisma.appointment.groupBy({ by: ["specialty"], where: { ...inWindow, status: { not: "CANCELLED" } }, _count: true }),
     prisma.appointment.groupBy({
       by: ["doctorId", "status"],
-      where: { ...inWindow, doctorId: { not: null } },
+      where: { ...inWindow, doctorId: { not: null }, status: { not: "CANCELLED" } },
       _count: true,
       _sum: { price: true },
     }),
     prisma.doctor.findMany({ where: { facilityId }, select: { id: true, name: true, nameAr: true, specialty: true, rating: true } }),
-    timeSeries({ table: "Appointment", dateColumn: "scheduledAt", range, where: facilityFilter }),
+    timeSeries({ table: "Appointment", dateColumn: "scheduledAt", range, where: Prisma.sql`${facilityFilter} AND status <> 'CANCELLED'` }),
     timeSeries({ table: "Appointment", dateColumn: "scheduledAt", range, where: Prisma.sql`${facilityFilter} AND status = 'COMPLETED'` }),
     timeSeries({
       table: "Appointment",
@@ -78,8 +78,9 @@ export async function getFacilityAnalytics(facilityId: string, rangeKey: Analyti
   const count = (rows: { status: string; _count: number }[], s?: string) =>
     rows.filter((r) => !s || r.status === s).reduce((sum, r) => sum + r._count, 0);
 
-  const total = count(statusNow);
-  const totalPrev = count(statusPrev);
+  // "Appointments" means visits that were not cancelled, consistently across dashboards.
+  const total = count(statusNow) - count(statusNow, "CANCELLED");
+  const totalPrev = count(statusPrev) - count(statusPrev, "CANCELLED");
   const completed = count(statusNow, "COMPLETED");
   const noShow = count(statusNow, "NO_SHOW");
   const cancelled = count(statusNow, "CANCELLED");

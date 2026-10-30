@@ -558,7 +558,7 @@
     "roomType": "Room type",
     "country": "Country",
     "other": "Other",
-    "otherStatuses": "Scheduled, cancelled & no-show",
+    "otherStatuses": "Scheduled & no-show",
     "avgVisitValue": "Average visit value",
     "noDataShort": "No data yet",
     "roomsOccupied": "Rooms occupied (of {total})",

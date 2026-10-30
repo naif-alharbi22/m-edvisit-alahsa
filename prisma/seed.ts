@@ -1,7 +1,7 @@
 /**
  * Demo data seed.
  *
- *   npm run db:seed            # seeds only when the database has no users
+ *   npm run db:seed            # seeds only when the database has no facilities yet
  *   npm run db:seed -- --reset # wipes all data and reseeds
  *
  * Generates a deterministic year of platform activity relative to "today" so
@@ -103,9 +103,9 @@ async function wipe() {
 
 async function main() {
   const reset = process.argv.includes("--reset");
-  const existingUsers = await prisma.user.count();
-  if (existingUsers > 0 && !reset) {
-    console.log(`Database already contains ${existingUsers} users — skipping seed (use --reset to reseed).`);
+  const existingFacilities = await prisma.facility.count();
+  if (existingFacilities > 0 && !reset) {
+    console.log(`Database already contains catalog data (${existingFacilities} facilities) — skipping seed (use --reset to reseed).`);
     return;
   }
   if (reset) {

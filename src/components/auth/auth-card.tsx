@@ -1,4 +1,4 @@
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader } from "@/components/ui/card";
 
 export function AuthCard({ title, subtitle, children, footer }: { title: string; subtitle: string; children: React.ReactNode; footer: React.ReactNode }) {
   return (
@@ -10,7 +10,7 @@ export function AuthCard({ title, subtitle, children, footer }: { title: string;
               <span className="font-bold text-primary-foreground">M</span>
             </div>
           </div>
-          <CardTitle className="text-2xl">{title}</CardTitle>
+          <h1 className="text-2xl font-semibold leading-none tracking-tight">{title}</h1>
           <CardDescription>{subtitle}</CardDescription>
         </CardHeader>
         <CardContent>{children}</CardContent>

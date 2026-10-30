@@ -40,7 +40,7 @@ export function StackedColumnChart({ data, series, formatValue, formatTick, heig
             axisLine={false}
             tick={{ fill: "var(--chart-muted-ink)", fontSize: 11 }}
             tickFormatter={formatTick ?? formatValue}
-            width={52}
+            width={64}
             allowDecimals={false}
           />
           <Tooltip

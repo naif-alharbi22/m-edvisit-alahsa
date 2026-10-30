@@ -79,9 +79,10 @@ export async function createBooking(userId: string, input: CreateBookingInput) {
       // Lock the room type row so concurrent bookings for it are serialized.
       await tx.$queryRaw`SELECT id FROM "RoomType" WHERE id = ${input.roomTypeId} FOR UPDATE`;
 
+      // Queries inside the transaction avoid `include`: Prisma resolves relations
+      // with parallel queries, which a single transaction connection must not receive.
       const roomType = await tx.roomType.findFirst({
         where: { id: input.roomTypeId, hotelId: input.hotelId, isActive: true, hotel: { isActive: true } },
-        include: { hotel: { select: { id: true, name: true } } },
       });
       if (!roomType) throw new NotFoundError("Room type");
       if (input.guests > roomType.capacity * input.rooms) {
@@ -112,21 +113,25 @@ export async function createBooking(userId: string, input: CreateBookingInput) {
           currency: roomType.currency,
           specialRequests: input.specialRequests ?? null,
         },
-        include: bookingListInclude,
+        select: { id: true },
       });
     });
 
-  let booking: BookingWithRelations | undefined;
-  for (let attempt = 0; attempt < 5 && !booking; attempt++) {
+  let created: { id: string } | undefined;
+  for (let attempt = 0; attempt < 5 && !created; attempt++) {
     try {
-      booking = await run();
+      created = await run();
     } catch (err) {
       const code = (err as { code?: string }).code;
       if (code === "P2002" && JSON.stringify((err as { meta?: unknown }).meta ?? "").includes("reference")) continue;
       throw err;
     }
   }
-  if (!booking) throw new Error("Could not generate a unique booking reference");
+  if (!created) throw new Error("Could not generate a unique booking reference");
+  const booking: BookingWithRelations = await prisma.hotelBooking.findUniqueOrThrow({
+    where: { id: created.id },
+    include: bookingListInclude,
+  });
 
   const checkInIso = input.checkIn;
   await Promise.all([

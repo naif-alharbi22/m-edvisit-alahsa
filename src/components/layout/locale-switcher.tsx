@@ -20,9 +20,11 @@ export function LocaleSwitcher({ className }: { className?: string }) {
   };
 
   return (
-    <Button variant="ghost" size="sm" onClick={switchLocale} className={className} aria-label={t("language")}>
-      <Globe className="h-3.5 w-3.5" />
-      <span className="text-xs">{locale === "en" ? "العربية" : "English"}</span>
+    <Button variant="ghost" size="sm" onClick={switchLocale} className={className} title={t("language")}>
+      <Globe className="h-3.5 w-3.5" aria-hidden />
+      <span className="text-xs" lang={locale === "en" ? "ar" : "en"}>
+        {locale === "en" ? "العربية" : "English"}
+      </span>
     </Button>
   );
 }

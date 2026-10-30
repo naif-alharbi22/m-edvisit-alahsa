@@ -9,10 +9,10 @@ export const passwordSchema = z
   .regex(/[A-Za-z]/, "Password must contain a letter")
   .regex(/[0-9]/, "Password must contain a number");
 
-export const emailSchema = z
-  .email("Enter a valid email address")
-  .max(200)
-  .transform((v) => v.trim().toLowerCase());
+export const emailSchema = z.preprocess(
+  (v) => (typeof v === "string" ? v.trim().toLowerCase() : v),
+  z.email("Enter a valid email address").max(200)
+);
 
 const nationality = z.preprocess(
   (v) => (typeof v === "string" && v.trim() === "" ? null : v),
