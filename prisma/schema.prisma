@@ -7,53 +7,351 @@ datasource db {
   provider = "postgresql"
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  password  String?
-  image     String?
-  role      String   @default("patient")
-  locale    String   @default("en")
-  phone     String?
-  nationality String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ─── Enums ──────────────────────────────────────────────────────────────────
 
-  reports      MedicalReport[]
-  appointments Appointment[]
-  chatMessages ChatMessage[]
+enum Role {
+  PATIENT
+  HOSPITAL_ADMIN
+  HOTEL_MANAGER
+  SUPER_ADMIN
 }
 
-model MedicalReport {
-  id          String   @id @default(cuid())
-  userId      String
-  fileUrl     String
-  fileName    String
-  fileType    String
-  analysis    String?
-  specialty   String?
-  summary     String?
-  status      String   @default("pending")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+enum FacilityType {
+  HOSPITAL
+  CLINIC
+  MEDICAL_CENTER
+}
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+}
+
+enum ReportStatus {
+  PENDING
+  ANALYZED
+  FAILED
+}
+
+enum Urgency {
+  LOW
+  MODERATE
+  HIGH
+  EMERGENCY
+}
+
+// ─── Identity ───────────────────────────────────────────────────────────────
+
+model User {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  name        String?
+  password    String?
+  image       String?
+  role        Role      @default(PATIENT)
+  locale      String    @default("en")
+  phone       String?
+  /// ISO 3166-1 alpha-2 country code
+  nationality String?
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+  /// Set for HOSPITAL_ADMIN users: the facility they manage
+  facilityId  String?
+  /// Set for HOTEL_MANAGER users: the hotel they manage
+  hotelId     String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  facility      Facility?      @relation("FacilityStaff", fields: [facilityId], references: [id], onDelete: SetNull)
+  hotel         Hotel?         @relation("HotelStaff", fields: [hotelId], references: [id], onDelete: SetNull)
+  reports       MedicalReport[]
+  appointments  Appointment[]
+  hotelBookings HotelBooking[]
+  chatMessages  ChatMessage[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+  reviews       Review[]
+
+  @@index([role])
+  @@index([facilityId])
+  @@index([hotelId])
+  @@index([createdAt])
+}
+
+// ─── Medical ────────────────────────────────────────────────────────────────
+
+model MedicalReport {
+  id        String       @id @default(cuid())
+  userId    String
+  fileName  String
+  fileType  String
+  fileSize  Int?
+  /// Structured AI analysis (findings, recommendedSpecialty, urgency, ...)
+  analysis  Json?
+  specialty String?
+  urgency   Urgency?
+  summary   String?
+  status    ReportStatus @default(PENDING)
+  locale    String       @default("en")
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@index([userId, createdAt])
+  @@index([specialty])
+}
+
+model Facility {
+  id             String       @id @default(cuid())
+  name           String
+  nameAr         String?
+  slug           String       @unique
+  type           FacilityType @default(HOSPITAL)
+  description    String?
+  descriptionAr  String?
+  city           String       @default("Al-Ahsa")
+  address        String?
+  phone          String?
+  email          String?
+  website        String?
+  image          String?
+  rating         Float        @default(0)
+  reviewCount    Int          @default(0)
+  specialties    String[]
+  accreditations String[]
+  latitude       Float?
+  longitude      Float?
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  doctors           Doctor[]
+  treatmentPackages TreatmentPackage[]
+  appointments      Appointment[]
+  staff             User[]             @relation("FacilityStaff")
+  reviews           Review[]
+
+  @@index([isActive])
+}
+
+model Doctor {
+  id              String   @id @default(cuid())
+  facilityId      String
+  name            String
+  nameAr          String?
+  specialty       String
+  title           String?
+  image           String?
+  rating          Float    @default(0)
+  yearsExp        Int      @default(0)
+  languages       String[]
+  bio             String?
+  bioAr           String?
+  consultationFee Float?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  facility     Facility      @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@index([facilityId, isActive])
+  @@index([specialty])
+}
+
+model TreatmentPackage {
+  id            String   @id @default(cuid())
+  facilityId    String
+  name          String
+  nameAr        String?
+  description   String?
+  descriptionAr String?
+  specialty     String
+  price         Float
+  currency      String   @default("SAR")
+  duration      String?
+  includes      String[]
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  facility     Facility      @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@index([facilityId, isActive])
 }
 
 model Appointment {
-  id          String   @id @default(cuid())
-  userId      String
-  doctorName  String
-  facilityName String
-  specialty   String
-  date        DateTime
-  status      String   @default("pending")
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String            @id @default(cuid())
+  /// Human-friendly reference shown to patients and staff (e.g. AP-7K3P9Q)
+  reference       String            @unique
+  userId          String
+  facilityId      String
+  doctorId        String?
+  packageId       String?
+  reportId        String?
+  specialty       String
+  scheduledAt     DateTime
+  status          AppointmentStatus @default(PENDING)
+  patientNotes    String?
+  adminNotes      String?
+  /// Quoted price at booking time (package price or consultation fee)
+  price           Float?
+  currency        String            @default("SAR")
+  cancelledReason String?
+  confirmedAt     DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  facility      Facility          @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  doctor        Doctor?           @relation(fields: [doctorId], references: [id], onDelete: SetNull)
+  package       TreatmentPackage? @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  report        MedicalReport?    @relation(fields: [reportId], references: [id], onDelete: SetNull)
+  hotelBookings HotelBooking[]
+
+  @@index([facilityId, scheduledAt])
+  @@index([userId, scheduledAt])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ─── Hospitality ────────────────────────────────────────────────────────────
+
+model Hotel {
+  id            String   @id @default(cuid())
+  name          String
+  nameAr        String?
+  slug          String   @unique
+  description   String?
+  descriptionAr String?
+  city          String   @default("Al-Ahsa")
+  address       String?
+  phone         String?
+  email         String?
+  website       String?
+  image         String?
+  starRating    Int      @default(3)
+  rating        Float    @default(0)
+  reviewCount   Int      @default(0)
+  amenities     String[]
+  latitude      Float?
+  longitude     Float?
+  checkInTime   String   @default("14:00")
+  checkOutTime  String   @default("12:00")
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  roomTypes RoomType[]
+  bookings  HotelBooking[]
+  staff     User[]         @relation("HotelStaff")
+  reviews   Review[]
+
+  @@index([isActive])
+}
+
+model RoomType {
+  id            String   @id @default(cuid())
+  hotelId       String
+  name          String
+  nameAr        String?
+  description   String?
+  descriptionAr String?
+  capacity      Int      @default(2)
+  bedType       String?
+  sizeSqm       Int?
+  pricePerNight Float
+  currency      String   @default("SAR")
+  /// Physical inventory of this room type
+  totalRooms    Int
+  amenities     String[]
+  /// Wheelchair accessible / medical-friendly room
+  accessible    Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  hotel    Hotel          @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  bookings HotelBooking[]
+
+  @@index([hotelId, isActive])
+}
+
+model HotelBooking {
+  id              String        @id @default(cuid())
+  /// Human-friendly reference (e.g. HB-4M8T2X)
+  reference       String        @unique
+  userId          String
+  hotelId         String
+  roomTypeId      String
+  /// Optional link to the medical appointment this stay supports
+  appointmentId   String?
+  checkIn         DateTime      @db.Date
+  checkOut        DateTime      @db.Date
+  guests          Int           @default(1)
+  rooms           Int           @default(1)
+  nightlyRate     Float
+  totalPrice      Float
+  currency        String        @default("SAR")
+  status          BookingStatus @default(PENDING)
+  specialRequests String?
+  managerNotes    String?
+  cancelledReason String?
+  confirmedAt     DateTime?
+  checkedInAt     DateTime?
+  checkedOutAt    DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hotel       Hotel        @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  roomType    RoomType     @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+  appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  @@index([hotelId, checkIn])
+  @@index([roomTypeId, checkIn, checkOut])
+  @@index([userId, checkIn])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ─── Engagement ─────────────────────────────────────────────────────────────
+
+model Review {
+  id         String   @id @default(cuid())
+  userId     String
+  facilityId String?
+  hotelId    String?
+  rating     Int
+  comment    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  facility Facility? @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  hotel    Hotel?    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, facilityId])
+  @@unique([userId, hotelId])
+  @@index([facilityId])
+  @@index([hotelId])
 }
 
 model ChatMessage {
@@ -64,61 +362,40 @@ model ChatMessage {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
-model Facility {
-  id          String   @id @default(cuid())
-  name        String
-  nameAr      String?
-  description String?
-  descriptionAr String?
-  city        String   @default("Al-Ahsa")
-  address     String?
-  phone       String?
-  email       String?
-  website     String?
-  image       String?
-  rating      Float    @default(0)
-  specialties String[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  /// Translation key suffix, e.g. "appointmentConfirmed"
+  kind      String
+  /// Interpolation values for the translated message
+  data      Json?
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
 
-  doctors           Doctor[]
-  treatmentPackages TreatmentPackage[]
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
 }
 
-model Doctor {
+model AuditLog {
   id         String   @id @default(cuid())
-  facilityId String
-  name       String
-  nameAr     String?
-  specialty  String
-  image      String?
-  rating     Float    @default(0)
-  yearsExp   Int      @default(0)
-  languages  String[]
-  bio        String?
-  bioAr      String?
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  ipAddress  String?
   createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
 
-  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
-}
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
-model TreatmentPackage {
-  id          String   @id @default(cuid())
-  facilityId  String
-  name        String
-  nameAr      String?
-  description String?
-  descriptionAr String?
-  specialty   String
-  price       Float
-  currency    String   @default("SAR")
-  duration    String?
-  includes    String[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([createdAt])
 }

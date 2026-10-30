@@ -1,168 +1,515 @@
-import { PrismaClient } from "../src/generated/prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+/**
+ * Demo data seed.
+ *
+ *   npm run db:seed            # seeds only when the database has no users
+ *   npm run db:seed -- --reset # wipes all data and reseeds
+ *
+ * Generates a deterministic year of platform activity relative to "today" so
+ * every dashboard and analytics view has meaningful data out of the box.
+ * All demo accounts share the password in SEED_PASSWORD (default below).
+ */
+import "dotenv/config";
+import { randomUUID } from "node:crypto";
+import bcrypt from "bcryptjs";
 import pg from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient, Prisma } from "../src/generated/prisma/client";
+import {
+  FACILITIES,
+  HOTELS,
+  NATIONALITY_WEIGHTS,
+  FIRST_NAMES,
+  LAST_NAMES,
+  URGENCY_WEIGHTS,
+  REPORT_FILES,
+  REVIEW_COMMENTS,
+  type SeedFacility,
+  type SeedHotel,
+} from "./seed-data";
+
+type SeededFacility = Prisma.FacilityGetPayload<{ include: { doctors: true; treatmentPackages: true } }> & {
+  seed: SeedFacility;
+};
+type SeededHotel = Prisma.HotelGetPayload<{ include: { roomTypes: true } }> & { seed: SeedHotel };
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
+
+const DEMO_PASSWORD = process.env.SEED_PASSWORD || "MedVisit@2026";
+const DAY = 86_400_000;
+
+// ─── Deterministic PRNG (mulberry32) ────────────────────────────────────────
+let rngState = 0x5eed1234;
+function rand(): number {
+  rngState |= 0;
+  rngState = (rngState + 0x6d2b79f5) | 0;
+  let t = Math.imul(rngState ^ (rngState >>> 15), 1 | rngState);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+const randInt = (min: number, max: number) => Math.floor(rand() * (max - min + 1)) + min;
+const pick = <T,>(arr: readonly T[]): T => arr[Math.floor(rand() * arr.length)]!;
+function weighted<T>(entries: [T, number][]): T {
+  const total = entries.reduce((s, [, w]) => s + w, 0);
+  let r = rand() * total;
+  for (const [value, w] of entries) {
+    r -= w;
+    if (r <= 0) return value;
+  }
+  return entries[entries.length - 1]![0];
+}
+
+const REF_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+const usedRefs = new Set<string>();
+function reference(prefix: "AP" | "HB"): string {
+  for (;;) {
+    let code = "";
+    for (let i = 0; i < 6; i++) code += REF_ALPHABET[Math.floor(rand() * REF_ALPHABET.length)];
+    const ref = `${prefix}-${code}`;
+    if (!usedRefs.has(ref)) {
+      usedRefs.add(ref);
+      return ref;
+    }
+  }
+}
+
+const today = new Date();
+today.setUTCHours(0, 0, 0, 0);
+const daysFromToday = (n: number) => new Date(today.getTime() + n * DAY);
+/** A clinic time between 08:00 and 16:30 (Asia/Riyadh = UTC+3) on the given day. */
+function clinicTime(day: Date): Date {
+  const hourLocal = randInt(8, 16);
+  const minute = pick([0, 15, 30, 45]);
+  return new Date(day.getTime() + (hourLocal - 3) * 3_600_000 + minute * 60_000);
+}
+
+async function wipe() {
+  // Order matters for FK constraints.
+  await prisma.auditLog.deleteMany();
+  await prisma.notification.deleteMany();
+  await prisma.chatMessage.deleteMany();
+  await prisma.review.deleteMany();
+  await prisma.hotelBooking.deleteMany();
+  await prisma.appointment.deleteMany();
+  await prisma.medicalReport.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.roomType.deleteMany();
+  await prisma.hotel.deleteMany();
+  await prisma.treatmentPackage.deleteMany();
+  await prisma.doctor.deleteMany();
+  await prisma.facility.deleteMany();
+}
 
 async function main() {
-  console.log("Seeding database...");
+  const reset = process.argv.includes("--reset");
+  const existingUsers = await prisma.user.count();
+  if (existingUsers > 0 && !reset) {
+    console.log(`Database already contains ${existingUsers} users — skipping seed (use --reset to reseed).`);
+    return;
+  }
+  if (reset) {
+    if (process.env.NODE_ENV === "production" && process.env.SEED_ALLOW_RESET !== "true") {
+      throw new Error("Refusing to reset a production database. Set SEED_ALLOW_RESET=true to override.");
+    }
+    console.log("Wiping existing data...");
+    await wipe();
+  }
 
-  const facilities = [
-    {
-      name: "Al-Moosa Specialist Hospital",
-      nameAr: "مستشفى المواس التخصصي",
-      description: "A leading private hospital in Al-Ahsa offering comprehensive medical services with state-of-the-art technology and internationally trained physicians.",
-      descriptionAr: "مستشفى خاص رائد في الأحساء يقدم خدمات طبية شاملة بأحدث التقنيات وأطباء مدربين دولياً.",
-      city: "Al-Ahsa",
-      address: "King Fahd Road, Al-Hofuf, Al-Ahsa 36442",
-      phone: "+966 13 582 3333",
-      email: "info@almoosa-hospital.com",
-      website: "https://almoosa-hospital.com",
-      rating: 4.7,
-      specialties: ["Cardiology", "Orthopedics", "Neurology", "General Surgery", "Oncology", "Urology"],
+  console.log("Seeding demo data...");
+  const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
+
+  // ── Catalog: facilities, doctors, packages ────────────────────────────────
+  const facilities: SeededFacility[] = [];
+  for (const f of FACILITIES) {
+    const facility = await prisma.facility.create({
+      data: {
+        slug: f.slug,
+        name: f.name,
+        nameAr: f.nameAr,
+        type: f.type,
+        description: f.description,
+        descriptionAr: f.descriptionAr,
+        address: f.address,
+        phone: f.phone,
+        email: f.email ?? null,
+        website: f.website ?? null,
+        rating: f.baseRating,
+        specialties: f.specialties,
+        accreditations: f.accreditations,
+        latitude: f.latitude,
+        longitude: f.longitude,
+        doctors: {
+          create: f.doctors.map((d) => ({ ...d, rating: Math.min(5, Math.round((f.baseRating + rand() * 0.4) * 10) / 10) })),
+        },
+        treatmentPackages: { create: f.packages },
+      },
+      include: { doctors: true, treatmentPackages: true },
+    });
+    facilities.push({ ...facility, seed: f });
+  }
+
+  // ── Catalog: hotels & room types ──────────────────────────────────────────
+  const hotels: SeededHotel[] = [];
+  for (const h of HOTELS) {
+    const hotel = await prisma.hotel.create({
+      data: {
+        slug: h.slug,
+        name: h.name,
+        nameAr: h.nameAr,
+        description: h.description,
+        descriptionAr: h.descriptionAr,
+        address: h.address,
+        phone: h.phone,
+        email: h.email,
+        starRating: h.starRating,
+        rating: h.baseRating,
+        amenities: h.amenities,
+        latitude: h.latitude,
+        longitude: h.longitude,
+        roomTypes: { create: h.roomTypes },
+      },
+      include: { roomTypes: true },
+    });
+    hotels.push({ ...hotel, seed: h });
+  }
+
+  // ── Staff accounts ────────────────────────────────────────────────────────
+  const superAdmin = await prisma.user.create({
+    data: {
+      email: "admin@medvisit.sa",
+      name: "Platform Administrator",
+      password: passwordHash,
+      role: "SUPER_ADMIN",
+      nationality: "SA",
+      createdAt: daysFromToday(-400),
     },
-    {
-      name: "King Fahd Hospital in Al-Ahsa",
-      nameAr: "مستشفى الملك فهد بالأحساء",
-      description: "A major government hospital providing advanced medical care, specialized surgeries, and serving as a referral center for the Eastern Province.",
-      descriptionAr: "مستشفى حكومي رئيسي يقدم رعاية طبية متقدمة وجراحات متخصصة ويعمل كمركز إحالة للمنطقة الشرقية.",
-      city: "Al-Ahsa",
-      address: "Al-Hofuf, Al-Ahsa 31982",
-      phone: "+966 13 584 8888",
-      rating: 4.3,
-      specialties: ["Cardiac Surgery", "Nephrology", "Pediatrics", "Obstetrics", "Emergency Medicine", "Internal Medicine"],
-    },
-    {
-      name: "Saad Specialist Hospital",
-      nameAr: "مستشفى سعد التخصصي",
-      description: "A JCI-accredited hospital known for excellence in cardiac care, orthopedics, and oncology with multilingual staff serving international patients.",
-      descriptionAr: "مستشفى معتمد من JCI معروف بالتميز في رعاية القلب والطب العظمي والأورام مع طاقم متعدد اللغات يخدم المرضى الدوليين.",
-      city: "Al-Ahsa",
-      address: "Prince Sultan Road, Al-Hofuf, Al-Ahsa 31952",
-      phone: "+966 13 587 9999",
-      email: "info@saad-hospital.com",
-      rating: 4.5,
-      specialties: ["Cardiology", "Orthopedics", "Oncology", "Ophthalmology", "ENT", "Dermatology"],
-    },
-    {
-      name: "Al-Ahsa Medical Center",
-      nameAr: "مركز الأحساء الطبي",
-      description: "A modern medical center offering specialized outpatient services, diagnostic imaging, and minimally invasive procedures.",
-      descriptionAr: "مركز طبي حديث يقدم خدمات العيادات الخارجية المتخصصة والتصوير التشخيصي والإجراءات طفيفة التوغل.",
-      city: "Al-Ahsa",
-      address: "Al-Mubarraz, Al-Ahsa 36321",
-      phone: "+966 13 585 4444",
-      rating: 4.1,
-      specialties: ["Internal Medicine", "Endocrinology", "Gastroenterology", "Pulmonology", "Rheumatology"],
-    },
-  ];
+  });
 
-  const doctorData = [
-    { name: "Dr. Ahmed Al-Qahtani", nameAr: "د. أحمد القحطاني", specialty: "Cardiology", rating: 4.8, yearsExp: 18, languages: ["Arabic", "English"], bio: "Interventional cardiologist with extensive experience in cardiac catheterization and stent placement.", bioAr: "طبيب قلب تدخلي مع خبرة واسعة في القسطرة القلبية وتركيب الدعامات." },
-    { name: "Dr. Fatima Al-Dossari", nameAr: "د. فاطمة الدوسري", specialty: "Orthopedics", rating: 4.7, yearsExp: 14, languages: ["Arabic", "English", "French"], bio: "Orthopedic surgeon specializing in joint replacement and sports medicine.", bioAr: "جراح عظام متخصص في استبدال المفاصل والطب الرياضي." },
-    { name: "Dr. Khalid Al-Shammari", nameAr: "د. خالد الشمري", specialty: "Neurology", rating: 4.6, yearsExp: 12, languages: ["Arabic", "English"], bio: "Neurologist focused on stroke management and neurodegenerative diseases.", bioAr: "طبيب أعصاب متخصص في إدارة السكتة الدماغية والأمراض التنكسية العصبية." },
-    { name: "Dr. Sara Al-Harbi", nameAr: "د. سارة الحربي", specialty: "Oncology", rating: 4.9, yearsExp: 20, languages: ["Arabic", "English", "German"], bio: "Medical oncologist with international training in immunotherapy and targeted cancer treatments.", bioAr: "طبيبة أورام مع تدريب دولي في العلاج المناعي والعلاجات الموجهة للسرطان." },
-    { name: "Dr. Mohammed Al-Ghamdi", nameAr: "د. محمد الغامدي", specialty: "General Surgery", rating: 4.5, yearsExp: 15, languages: ["Arabic", "English"], bio: "General and laparoscopic surgeon with expertise in bariatric and colorectal surgery.", bioAr: "جراح عام ومنظاري مع خبرة في جراحة السمنة والقولون." },
-    { name: "Dr. Noura Al-Zahrani", nameAr: "د. نورة الزهراني", specialty: "Pediatrics", rating: 4.8, yearsExp: 10, languages: ["Arabic", "English", "Urdu"], bio: "Pediatric specialist with focus on childhood development and infectious diseases.", bioAr: "أخصائية طب أطفال مع تركيز على نمو الطفل والأمراض المعدية." },
-    { name: "Dr. Hassan Al-Mutairi", nameAr: "د. حسن المطيري", specialty: "Ophthalmology", rating: 4.6, yearsExp: 16, languages: ["Arabic", "English"], bio: "Eye surgeon specializing in LASIK, cataract surgery, and retinal treatments.", bioAr: "جراح عيون متخصص في الليزك وجراحة الساد وعلاج الشبكية." },
-    { name: "Dr. Aisha Al-Badr", nameAr: "د. عائشة البدر", specialty: "Dermatology", rating: 4.7, yearsExp: 11, languages: ["Arabic", "English", "French"], bio: "Dermatologist with expertise in cosmetic dermatology, laser treatments, and skin cancer screening.", bioAr: "طبيبة جلدية متخصصة في الأمراض الجلدية التجميلية وعلاجات الليزر وفحص سرطان الجلد." },
-  ];
-
-  const packageData = [
-    { name: "Cardiac Check-up Package", nameAr: "باقة فحص القلب الشامل", description: "Comprehensive heart health assessment including ECG, echocardiogram, blood tests, and cardiologist consultation.", descriptionAr: "تقييم شامل لصحة القلب يشمل تخطيط القلب وتخطيط صدى القلب وتحاليل الدم واستشارة طبيب قلب.", specialty: "Cardiology", price: 3500, currency: "SAR", duration: "1 Day", includes: ["ECG", "Echocardiogram", "Blood Panel", "Doctor Consultation", "Report"] },
-    { name: "Joint Replacement Surgery", nameAr: "جراحة استبدال المفاصل", description: "Complete knee or hip replacement package including surgery, hospital stay, physiotherapy, and follow-up.", descriptionAr: "باقة استبدال الركبة أو الورك الكاملة بما في ذلك الجراحة والإقامة في المستشفى والعلاج الطبيعي والمتابعة.", specialty: "Orthopedics", price: 85000, currency: "SAR", duration: "7-10 Days", includes: ["Pre-op Assessment", "Surgery", "5-Day Hospital Stay", "Physiotherapy", "Medications", "Follow-up"] },
-    { name: "Comprehensive Cancer Screening", nameAr: "فحص شامل للكشف عن السرطان", description: "Full-body cancer screening with advanced imaging, tumor markers, and oncologist consultation.", descriptionAr: "فحص شامل للكشف عن السرطان بالتصوير المتقدم وعلامات الأورام واستشارة طبيب أورام.", specialty: "Oncology", price: 6000, currency: "SAR", duration: "2 Days", includes: ["CT Scan", "Tumor Markers", "Blood Tests", "Oncologist Review", "Detailed Report"] },
-    { name: "LASIK Eye Surgery", nameAr: "عملية الليزك لتصحيح النظر", description: "State-of-the-art LASIK vision correction with pre and post-operative care.", descriptionAr: "تصحيح النظر بالليزك المتطور مع الرعاية قبل وبعد العملية.", specialty: "Ophthalmology", price: 8000, currency: "SAR", duration: "1 Day", includes: ["Pre-op Assessment", "LASIK Surgery", "Post-op Check", "Eye Drops", "3-Month Follow-up"] },
-    { name: "Medical Tourist Welcome Package", nameAr: "باقة ترحيب بالسائح الطبي", description: "Airport pickup, hotel booking, local SIM card, translator, and medical appointment coordination.", descriptionAr: "استقبال من المطار وحجز فندق وشريحة اتصال محلية ومترجم وتنسيق المواعيد الطبية.", specialty: "General", price: 1500, currency: "SAR", duration: "Per Trip", includes: ["Airport Transfer", "3-Star Hotel (3 Nights)", "Local SIM", "Translator", "Appointment Coordination"] },
-    { name: "Executive Health Check-up", nameAr: "فحص صحي تنفيذي شامل", description: "Premium health screening for executives with same-day results and lifestyle recommendations.", descriptionAr: "فحص صحي متميز للتنفيذيين مع نتائج في نفس اليوم وتوصيات لنمط الحياة.", specialty: "Internal Medicine", price: 4500, currency: "SAR", duration: "1 Day", includes: ["Full Blood Panel", "Chest X-Ray", "Ultrasound", "Stress Test", "Doctor Consultation", "Nutrition Plan"] },
-  ];
-
-  for (const facility of facilities) {
-    const created = await prisma.facility.create({ data: facility });
-
-    const facilityDoctors = doctorData.filter(d =>
-      facility.specialties.includes(d.specialty)
+  const hospitalAdmins = [];
+  for (const f of facilities) {
+    hospitalAdmins.push(
+      await prisma.user.create({
+        data: {
+          email: f.seed.adminEmail,
+          name: f.seed.adminName,
+          password: passwordHash,
+          role: "HOSPITAL_ADMIN",
+          facilityId: f.id,
+          nationality: "SA",
+          createdAt: daysFromToday(-380),
+        },
+      })
     );
+  }
 
-    for (const doc of facilityDoctors) {
-      await prisma.doctor.create({
-        data: { ...doc, facilityId: created.id },
+  for (const h of hotels) {
+    await prisma.user.create({
+      data: {
+        email: h.seed.managerEmail,
+        name: h.seed.managerName,
+        password: passwordHash,
+        role: "HOTEL_MANAGER",
+        hotelId: h.id,
+        nationality: "SA",
+        createdAt: daysFromToday(-380),
+      },
+    });
+  }
+
+  // ── Patients ──────────────────────────────────────────────────────────────
+  const demoPatient = await prisma.user.create({
+    data: {
+      email: "patient@medvisit.sa",
+      name: "Ahmed Hassan",
+      password: passwordHash,
+      role: "PATIENT",
+      nationality: "KW",
+      phone: "+965 5000 1234",
+      createdAt: daysFromToday(-120),
+    },
+  });
+
+  const patientRows: Prisma.UserCreateManyInput[] = [];
+  for (let i = 0; i < 70; i++) {
+    const first = pick(FIRST_NAMES);
+    const last = pick(LAST_NAMES);
+    // Registrations accelerate over the year (platform growth).
+    const ageDays = Math.floor(Math.pow(rand(), 1.6) * 360);
+    patientRows.push({
+      id: randomUUID(),
+      email: `${first}.${last}.${i}@example.com`.toLowerCase().replace(/[^a-z0-9.@-]/g, ""),
+      name: `${first} ${last}`,
+      password: passwordHash,
+      role: "PATIENT",
+      locale: rand() < 0.6 ? "ar" : "en",
+      nationality: weighted(NATIONALITY_WEIGHTS),
+      phone: `+9${randInt(10, 99)} ${randInt(1000, 9999)} ${randInt(1000, 9999)}`,
+      createdAt: daysFromToday(-ageDays),
+    });
+  }
+  await prisma.user.createMany({ data: patientRows });
+  const patients = [
+    { id: demoPatient.id, createdAt: demoPatient.createdAt },
+    ...patientRows.map((p) => ({ id: p.id!, createdAt: p.createdAt as Date })),
+  ];
+
+  // ── Medical reports (triage history) ──────────────────────────────────────
+  const allSpecialties = Array.from(new Set(facilities.flatMap((f) => f.specialties)));
+  const reportRows: Prisma.MedicalReportCreateManyInput[] = [];
+  for (const p of patients) {
+    const count = p.id === demoPatient.id ? 2 : randInt(0, 2);
+    for (let i = 0; i < count; i++) {
+      const sinceSignup = Math.max(1, Math.floor((today.getTime() - p.createdAt.getTime()) / DAY));
+      const createdAt = daysFromToday(-randInt(0, sinceSignup));
+      const specialty = pick(allSpecialties);
+      const urgency = weighted(URGENCY_WEIGHTS) as "LOW" | "MODERATE" | "HIGH" | "EMERGENCY";
+      const summary = `Findings suggest a ${specialty.toLowerCase()} consultation is advisable (${urgency.toLowerCase()} priority).`;
+      reportRows.push({
+        id: randomUUID(),
+        userId: p.id,
+        fileName: pick(REPORT_FILES),
+        fileType: "application/pdf",
+        fileSize: randInt(80_000, 2_400_000),
+        specialty,
+        urgency,
+        summary,
+        status: "ANALYZED",
+        analysis: {
+          findings: [`Indicators relevant to ${specialty}`, "Values outside reference range noted"],
+          recommendedSpecialty: specialty,
+          urgency: urgency.toLowerCase(),
+          summary,
+          suggestedActions: [`Book a ${specialty} consultation`, "Bring previous reports to the visit"],
+          recommendedTests: ["Complete blood count", "Specialist examination"],
+        },
+        createdAt,
+        updatedAt: createdAt,
       });
     }
+  }
+  await prisma.medicalReport.createMany({ data: reportRows });
 
-    const facilityPackages = packageData.filter(p =>
-      facility.specialties.includes(p.specialty) || p.specialty === "General"
-    );
+  // ── Appointments ──────────────────────────────────────────────────────────
+  const appointmentRows: Prisma.AppointmentCreateManyInput[] = [];
+  const appointmentMeta: { id: string; userId: string; scheduledAt: Date; status: string; facilityIdx: number }[] = [];
+  const facilityWeights: [number, number][] = facilities.map((f, i) => [i, Math.round(f.seed.baseRating * 10) - 35]);
 
-    for (const pkg of facilityPackages) {
-      await prisma.treatmentPackage.create({
-        data: { ...pkg, facilityId: created.id },
+  function addAppointment(userId: string, dayOffset: number, forceStatus?: string) {
+    const facilityIdx = weighted(facilityWeights);
+    const facility = facilities[facilityIdx]!;
+    const usePackage = rand() < 0.55 && facility.treatmentPackages.length > 0;
+    const pkg = usePackage ? pick(facility.treatmentPackages) : null;
+    const doctorPool = facility.doctors.filter((d) => !pkg || d.specialty === pkg.specialty);
+    const doctor = doctorPool.length > 0 && rand() < 0.85 ? pick(doctorPool) : null;
+    const specialty = pkg?.specialty ?? doctor?.specialty ?? pick(facility.specialties);
+    const scheduledAt = clinicTime(daysFromToday(dayOffset));
+    const isPast = scheduledAt.getTime() < Date.now();
+
+    let status = forceStatus;
+    if (!status) {
+      status = isPast
+        ? weighted([["COMPLETED", 78], ["CANCELLED", 14], ["NO_SHOW", 8]])
+        : weighted([["PENDING", 42], ["CONFIRMED", 50], ["CANCELLED", 8]]);
+    }
+    const createdAt = new Date(scheduledAt.getTime() - randInt(3, 30) * DAY);
+    const id = randomUUID();
+    appointmentRows.push({
+      id,
+      reference: reference("AP"),
+      userId,
+      facilityId: facility.id,
+      doctorId: doctor?.id ?? null,
+      packageId: pkg?.id ?? null,
+      specialty,
+      scheduledAt,
+      status: status as Prisma.AppointmentCreateManyInput["status"],
+      price: pkg?.price ?? doctor?.consultationFee ?? 300,
+      patientNotes: rand() < 0.4 ? "I will be travelling with a family member." : null,
+      confirmedAt: ["CONFIRMED", "COMPLETED", "NO_SHOW"].includes(status) ? new Date(createdAt.getTime() + DAY) : null,
+      completedAt: status === "COMPLETED" ? scheduledAt : null,
+      cancelledAt: status === "CANCELLED" ? new Date(createdAt.getTime() + 2 * DAY) : null,
+      cancelledReason: status === "CANCELLED" ? pick(["Travel plans changed", "Rescheduled at patient request", "Visa delay"]) : null,
+      createdAt,
+      updatedAt: createdAt,
+    });
+    appointmentMeta.push({ id, userId, scheduledAt, status, facilityIdx });
+  }
+
+  // Volume grows over the year: more appointments in recent months.
+  for (let i = 0; i < 300; i++) {
+    const patient = pick(patients);
+    const sinceSignup = Math.floor((today.getTime() - patient.createdAt.getTime()) / DAY);
+    const back = Math.floor(Math.pow(rand(), 1.4) * Math.min(330, Math.max(5, sinceSignup)));
+    const offset = rand() < 0.18 ? randInt(1, 45) : -back;
+    addAppointment(patient.id, offset);
+  }
+  // Demo patient: one completed visit, one upcoming confirmed, one pending.
+  addAppointment(demoPatient.id, -60, "COMPLETED");
+  addAppointment(demoPatient.id, 12, "CONFIRMED");
+  addAppointment(demoPatient.id, 26, "PENDING");
+  await prisma.appointment.createMany({ data: appointmentRows });
+
+  // ── Hotel bookings ────────────────────────────────────────────────────────
+  const bookingRows: Prisma.HotelBookingCreateManyInput[] = [];
+  const bookingMeta: { userId: string; hotelIdx: number; status: string }[] = [];
+
+  function addBooking(userId: string, checkIn: Date, nights: number, appointmentId: string | null, hotelIdx?: number) {
+    const hIdx = hotelIdx ?? randInt(0, hotels.length - 1);
+    const hotel = hotels[hIdx]!;
+    const room = pick(hotel.roomTypes);
+    const rooms = rand() < 0.85 ? 1 : 2;
+    const checkOut = new Date(checkIn.getTime() + nights * DAY);
+    let status: string;
+    if (checkOut <= today) status = weighted([["CHECKED_OUT", 88], ["CANCELLED", 12]]);
+    else if (checkIn <= today) status = "CHECKED_IN";
+    else status = weighted([["PENDING", 35], ["CONFIRMED", 57], ["CANCELLED", 8]]);
+    const createdAt = new Date(checkIn.getTime() - randInt(5, 35) * DAY);
+    const totalPrice = room.pricePerNight * nights * rooms;
+    bookingRows.push({
+      id: randomUUID(),
+      reference: reference("HB"),
+      userId,
+      hotelId: hotel.id,
+      roomTypeId: room.id,
+      appointmentId,
+      checkIn,
+      checkOut,
+      guests: Math.min(room.capacity * rooms, randInt(1, 3)),
+      rooms,
+      nightlyRate: room.pricePerNight,
+      totalPrice,
+      status: status as Prisma.HotelBookingCreateManyInput["status"],
+      specialRequests: rand() < 0.3 ? pick(["Ground floor please", "Late check-in", "Wheelchair needed", "Quiet room"]) : null,
+      confirmedAt: ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"].includes(status) ? new Date(createdAt.getTime() + DAY) : null,
+      checkedInAt: ["CHECKED_IN", "CHECKED_OUT"].includes(status) ? new Date(checkIn.getTime() + 14 * 3_600_000) : null,
+      checkedOutAt: status === "CHECKED_OUT" ? new Date(checkOut.getTime() + 9 * 3_600_000) : null,
+      cancelledAt: status === "CANCELLED" ? new Date(createdAt.getTime() + 3 * DAY) : null,
+      createdAt,
+      updatedAt: createdAt,
+    });
+    bookingMeta.push({ userId, hotelIdx: hIdx, status });
+  }
+
+  for (const appt of appointmentMeta) {
+    if (appt.status === "CANCELLED" || rand() > 0.62) continue;
+    const apptDay = new Date(appt.scheduledAt);
+    apptDay.setUTCHours(0, 0, 0, 0);
+    addBooking(appt.userId, new Date(apptDay.getTime() - DAY), randInt(2, 7), appt.id);
+  }
+  // Some stays not linked to an appointment (companions, follow-ups).
+  for (let i = 0; i < 30; i++) {
+    addBooking(pick(patients).id, daysFromToday(randInt(-300, 40)), randInt(1, 5), null);
+  }
+  await prisma.hotelBooking.createMany({ data: bookingRows });
+
+  // ── Reviews (only from completed visits / finished stays) ────────────────
+  const reviewRows: Prisma.ReviewCreateManyInput[] = [];
+  const reviewedFacility = new Set<string>();
+  const reviewedHotel = new Set<string>();
+  for (const a of appointmentMeta) {
+    if (a.status !== "COMPLETED" || rand() > 0.45) continue;
+    const facility = facilities[a.facilityIdx]!;
+    const key = `${a.userId}:${facility.id}`;
+    if (reviewedFacility.has(key)) continue;
+    reviewedFacility.add(key);
+    const rating = Math.max(1, Math.min(5, Math.round(facility.seed.baseRating + (rand() - 0.5) * 1.8)));
+    reviewRows.push({ userId: a.userId, facilityId: facility.id, rating, comment: rand() < 0.7 ? pick(REVIEW_COMMENTS) : null });
+  }
+  for (const b of bookingMeta) {
+    if (b.status !== "CHECKED_OUT" || rand() > 0.4) continue;
+    const hotel = hotels[b.hotelIdx]!;
+    const key = `${b.userId}:${hotel.id}`;
+    if (reviewedHotel.has(key)) continue;
+    reviewedHotel.add(key);
+    const rating = Math.max(1, Math.min(5, Math.round(hotel.seed.baseRating + (rand() - 0.5) * 1.8)));
+    reviewRows.push({ userId: b.userId, hotelId: hotel.id, rating, comment: rand() < 0.7 ? pick(REVIEW_COMMENTS) : null });
+  }
+  await prisma.review.createMany({ data: reviewRows });
+
+  // Recompute denormalized ratings from reviews.
+  for (const f of facilities) {
+    const agg = await prisma.review.aggregate({ where: { facilityId: f.id }, _avg: { rating: true }, _count: true });
+    if (agg._count > 0) {
+      await prisma.facility.update({
+        where: { id: f.id },
+        data: { rating: Math.round((agg._avg.rating ?? 0) * 10) / 10, reviewCount: agg._count },
+      });
+    }
+  }
+  for (const h of hotels) {
+    const agg = await prisma.review.aggregate({ where: { hotelId: h.id }, _avg: { rating: true }, _count: true });
+    if (agg._count > 0) {
+      await prisma.hotel.update({
+        where: { id: h.id },
+        data: { rating: Math.round((agg._avg.rating ?? 0) * 10) / 10, reviewCount: agg._count },
       });
     }
   }
 
-  const demoUser = await prisma.user.create({
-    data: {
-      email: "patient@example.com",
-      name: "Ahmed Hassan",
-      password: "$2a$10$placeholder_hash_for_demo",
-      role: "patient",
-      locale: "en",
-      phone: "+966 50 123 4567",
-      nationality: "UAE",
-    },
+  // ── Demo patient extras: notifications & chat history ─────────────────────
+  const demoUpcoming = appointmentRows.find((a) => a.userId === demoPatient.id && a.status === "CONFIRMED");
+  const demoFacility = facilities.find((f) => f.id === demoUpcoming?.facilityId);
+  await prisma.notification.createMany({
+    data: [
+      {
+        userId: demoPatient.id,
+        kind: "appointmentConfirmed",
+        data: { reference: demoUpcoming?.reference ?? "", facility: demoFacility?.name ?? "" },
+        link: "/dashboard",
+        createdAt: daysFromToday(-2),
+      },
+      {
+        userId: demoPatient.id,
+        kind: "welcome",
+        data: { name: "Ahmed" },
+        link: "/triage",
+        readAt: daysFromToday(-119),
+        createdAt: daysFromToday(-120),
+      },
+    ],
   });
-
-  await prisma.medicalReport.create({
-    data: {
-      userId: demoUser.id,
-      fileUrl: "/uploads/sample-report.pdf",
-      fileName: "blood-test-results.pdf",
-      fileType: "application/pdf",
-      analysis: JSON.stringify({
-        findings: ["Elevated cholesterol (280 mg/dL)", "Borderline high blood pressure (135/88)", "Vitamin D deficiency"],
-        recommendedSpecialty: "Cardiology",
-        urgency: "moderate",
-        suggestedActions: ["Cardiology consultation", "Diet modification", "Regular blood pressure monitoring"],
-      }),
-      specialty: "Cardiology",
-      summary: "Patient shows elevated cholesterol levels and borderline hypertension. Cardiology consultation recommended.",
-      status: "analyzed",
-    },
-  });
-
-  await prisma.appointment.create({
-    data: {
-      userId: demoUser.id,
-      doctorName: "Dr. Ahmed Al-Qahtani",
-      facilityName: "Al-Moosa Specialist Hospital",
-      specialty: "Cardiology",
-      date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      status: "confirmed",
-      notes: "Initial consultation for cholesterol management",
-    },
-  });
-
   await prisma.chatMessage.createMany({
     data: [
-      { userId: demoUser.id, role: "assistant", content: "Hello! I'm your MedVisit assistant. How can I help you with your medical journey today?" },
-      { userId: demoUser.id, role: "user", content: "I have high cholesterol and need to see a cardiologist in Al-Ahsa. What are my options?" },
-      { userId: demoUser.id, role: "assistant", content: "Based on your condition, I recommend Al-Moosa Specialist Hospital or Saad Specialist Hospital. Both have excellent cardiology departments with internationally trained cardiologists. Dr. Ahmed Al-Qahtani at Al-Moosa specializes in interventional cardiology. Would you like me to help you book an appointment?" },
+      { userId: demoPatient.id, role: "user", content: "I need a cardiologist in Al-Ahsa", createdAt: daysFromToday(-3) },
+      {
+        userId: demoPatient.id,
+        role: "assistant",
+        content:
+          "Al-Moosa Specialist Hospital and Saad Specialist Hospital both have experienced cardiologists. Would you like me to help you book a consultation?",
+        createdAt: new Date(daysFromToday(-3).getTime() + 5_000),
+      },
     ],
   });
 
-  console.log("Seeding completed successfully!");
-  console.log(`Created ${facilities.length} facilities with doctors and packages`);
-  console.log(`Created demo user: ${demoUser.email}`);
+  await prisma.auditLog.createMany({
+    data: [
+      { actorId: superAdmin.id, action: "system.seed", entityType: "System", metadata: { note: "Demo data generated" } },
+      { actorId: hospitalAdmins[0]!.id, action: "facility.update", entityType: "Facility", entityId: facilities[0]!.id },
+    ],
+  });
+
+  console.log(
+    [
+      `Seed complete:`,
+      `  facilities: ${facilities.length}, hotels: ${hotels.length}`,
+      `  patients: ${patients.length}, reports: ${reportRows.length}`,
+      `  appointments: ${appointmentRows.length}, hotel bookings: ${bookingRows.length}, reviews: ${reviewRows.length}`,
+      ``,
+      `Demo accounts (password: ${DEMO_PASSWORD}):`,
+      `  Super admin     admin@medvisit.sa`,
+      `  Hospital admin  ${FACILITIES[0]!.adminEmail}`,
+      `  Hotel manager   ${HOTELS[0]!.managerEmail}`,
+      `  Patient         patient@medvisit.sa`,
+    ].join("\n")
+  );
 }
 
 main()
-  .catch((e) => {
-    console.error("Seed error:", e);
-    process.exit(1);
+  .catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
   })
   .finally(async () => {
     await prisma.$disconnect();
+    await pool.end();
   });
