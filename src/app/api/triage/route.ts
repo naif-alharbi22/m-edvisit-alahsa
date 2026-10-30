@@ -1,68 +1,81 @@
-import { NextRequest, NextResponse } from "next/server";
-import { openai, TRIAGE_SYSTEM_PROMPT, TRIAGE_PROMPT_AR } from "@/lib/openai";
+import { NextResponse } from "next/server";
+import type { ChatCompletionContentPart } from "openai/resources/chat/completions";
+import { clientIp, withErrorHandling } from "@/lib/api";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { getOpenAI, TRIAGE_MODEL, triageSystemPrompt } from "@/lib/openai";
+import { parseTriageResponse, sniffMimeType, TRIAGE_MIME_TYPES } from "@/lib/triage";
+import { getCurrentUser } from "@/lib/session";
+import { logger } from "@/lib/logger";
+import { BadRequestError, ServiceUnavailableError } from "@/server/errors";
+import { listSpecialties } from "@/server/services/facilities";
+import { saveReport } from "@/server/services/reports";
 
-export async function POST(req: NextRequest) {
-  try {
-    const formData = await req.formData();
-    const file = formData.get("file") as File | null;
-    const locale = (formData.get("locale") as string) || "en";
+export const maxDuration = 60;
 
-    if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 });
-    }
+export const POST = withErrorHandling(async (req) => {
+  const user = await getCurrentUser();
+  enforceRateLimit("triage", user?.id ?? clientIp(req));
+  const openai = getOpenAI();
 
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
+  const formData = await req.formData().catch(() => {
+    throw new BadRequestError("Expected multipart form data");
+  });
+  const file = formData.get("file");
+  const locale = formData.get("locale") === "ar" ? "ar" : "en";
+  if (!(file instanceof File) || file.size === 0) throw new BadRequestError("No file provided");
 
-    const base64 = buffer.toString("base64");
-    const dataUrl = `data:${file.type};base64,${base64}`;
+  const maxBytes = Number(process.env.MAX_UPLOAD_MB ?? 10) * 1024 * 1024;
+  if (file.size > maxBytes) throw new BadRequestError("File is too large", { code: "FILE_TOO_LARGE" });
 
-    const systemPrompt = locale === "ar" ? TRIAGE_PROMPT_AR : TRIAGE_SYSTEM_PROMPT;
-
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: locale === "ar"
-                ? "يرجى تحليل هذا التقرير الطبي وتقديم تقييم منظم."
-                : "Please analyze this medical report and provide a structured assessment.",
-            },
-            {
-              type: "image_url",
-              image_url: { url: dataUrl },
-            },
-          ],
-        },
-      ],
-      max_tokens: 1500,
-      temperature: 0.3,
-    });
-
-    const content = response.choices[0]?.message?.content;
-
-    if (!content) {
-      return NextResponse.json({ error: "No analysis generated" }, { status: 500 });
-    }
-
-    let analysis;
-    try {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      analysis = jsonMatch ? JSON.parse(jsonMatch[0]) : { summary: content, findings: [], recommendedSpecialty: "General", urgency: "low", suggestedActions: [], recommendedTests: [] };
-    } catch {
-      analysis = { summary: content, findings: [], recommendedSpecialty: "General", urgency: "low", suggestedActions: [], recommendedTests: [] };
-    }
-
-    return NextResponse.json({ analysis });
-  } catch (error) {
-    console.error("Triage error:", error);
-    return NextResponse.json(
-      { error: "Failed to analyze report" },
-      { status: 500 }
-    );
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const mime = sniffMimeType(bytes);
+  if (!mime || !(TRIAGE_MIME_TYPES as readonly string[]).includes(mime)) {
+    throw new BadRequestError("Unsupported file type", { code: "UNSUPPORTED_TYPE" });
   }
-}
+
+  const dataUrl = `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`;
+  const filePart: ChatCompletionContentPart =
+    mime === "application/pdf"
+      ? { type: "file", file: { filename: file.name || "report.pdf", file_data: dataUrl } }
+      : { type: "image_url", image_url: { url: dataUrl, detail: "high" } };
+
+  const specialties = await listSpecialties();
+  let content: string | null | undefined;
+  try {
+    const response = await openai.chat.completions.create(
+      {
+        model: TRIAGE_MODEL(),
+        response_format: { type: "json_object" },
+        temperature: 0.2,
+        max_tokens: 1500,
+        messages: [
+          { role: "system", content: triageSystemPrompt(locale, specialties) },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: locale === "ar" ? "يرجى تحليل هذا المستند الطبي." : "Please analyze this medical document.",
+              },
+              filePart,
+            ],
+          },
+        ],
+      },
+      { signal: req.signal }
+    );
+    content = response.choices[0]?.message?.content;
+  } catch (err) {
+    logger.error("Triage model call failed", { err });
+    throw new ServiceUnavailableError("AI analysis failed, please try again");
+  }
+  if (!content) throw new ServiceUnavailableError("No analysis was generated");
+
+  const analysis = parseTriageResponse(content);
+  let reportId: string | null = null;
+  if (user) {
+    const report = await saveReport(user.id, { name: file.name, type: mime, size: file.size }, analysis, locale);
+    reportId = report.id;
+  }
+  return NextResponse.json({ analysis, reportId });
+});

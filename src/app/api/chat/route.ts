@@ -1,72 +1,91 @@
-import { NextRequest } from "next/server";
-import { openai } from "@/lib/openai";
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { clientIp, parseJson, withErrorHandling } from "@/lib/api";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { CHAT_MODEL, chatSystemPrompt, getOpenAI } from "@/lib/openai";
+import { getCurrentUser, requireApiUser } from "@/lib/session";
+import { logger } from "@/lib/logger";
+import { clearChatHistory, getCatalogContext, getChatHistory, saveChatExchange } from "@/server/services/chat";
 
-const CHAT_SYSTEM_PROMPT = `You are MedVisit Assistant, a helpful AI medical tourism assistant for Al-Ahsa, Saudi Arabia. You help international patients with:
+export const maxDuration = 60;
 
-1. Finding the right medical facilities and specialists
-2. Understanding treatment options and pricing
-3. Navigating the medical tourism process (visas, travel, accommodation)
-4. Providing general health information and guidance
+const chatRequestSchema = z.object({
+  messages: z
+    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().trim().min(1).max(4000) }))
+    .min(1)
+    .max(40)
+    .refine((m) => m[m.length - 1]!.role === "user", "The last message must come from the user"),
+});
 
-Key information about facilities in Al-Ahsa:
-- Al-Moosa Specialist Hospital: Leading private hospital with Cardiology, Orthopedics, Neurology, General Surgery, Oncology, Urology
-- King Fahd Hospital: Major government hospital with Cardiac Surgery, Nephrology, Pediatrics, Obstetrics
-- Saad Specialist Hospital: JCI-accredited, known for Cardiology, Orthopedics, Oncology, Ophthalmology
-- Al-Ahsa Medical Center: Modern center for Internal Medicine, Endocrinology, Gastroenterology
+export const GET = withErrorHandling(async () => {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ messages: [] });
+  return NextResponse.json({ messages: await getChatHistory(user.id) });
+});
 
-Important guidelines:
-- Always recommend consulting with a doctor for medical decisions
-- Be warm, professional, and culturally sensitive
-- Mention that you can help with booking appointments
-- If asked about emergencies, direct them to call 911 or go to the nearest emergency department
-- Respond in the same language the user writes in`;
+export const DELETE = withErrorHandling(async () => {
+  const user = await requireApiUser();
+  await clearChatHistory(user.id);
+  return new NextResponse(null, { status: 204 });
+});
 
-export async function POST(req: NextRequest) {
-  try {
-    const { messages } = await req.json();
+export const POST = withErrorHandling(async (req) => {
+  const user = await getCurrentUser();
+  enforceRateLimit("chat", user?.id ?? clientIp(req));
+  const { messages } = await parseJson(req, chatRequestSchema);
+  const openai = getOpenAI();
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: CHAT_SYSTEM_PROMPT },
-        ...messages,
-      ],
+  // Keep the most recent turns to bound prompt size.
+  const recent = messages.slice(-20);
+  const context = await getCatalogContext();
+  const completion = await openai.chat.completions.create(
+    {
+      model: CHAT_MODEL(),
+      messages: [{ role: "system", content: chatSystemPrompt(context) }, ...recent],
       max_tokens: 1000,
-      temperature: 0.7,
+      temperature: 0.6,
       stream: true,
-    });
+    },
+    { signal: req.signal }
+  );
 
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const chunk of response) {
-            const content = chunk.choices[0]?.delta?.content;
-            if (content) {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
-            }
+  const encoder = new TextEncoder();
+  const lastUserMessage = recent[recent.length - 1]!.content;
+  const stream = new ReadableStream({
+    async start(controller) {
+      let full = "";
+      try {
+        for await (const chunk of completion) {
+          const content = chunk.choices[0]?.delta?.content;
+          if (content) {
+            full += content;
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
           }
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-          controller.close();
-        } catch (error) {
-          console.error("Stream error:", error);
-          controller.error(error);
         }
-      },
-    });
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+        if (user && full) {
+          await saveChatExchange(user.id, lastUserMessage, full).catch((err) =>
+            logger.error("Failed to persist chat exchange", { err })
+          );
+        }
+      } catch (err) {
+        logger.error("Chat stream error", { err });
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "stream_failed" })}\n\n`));
+        controller.close();
+      }
+    },
+    cancel() {
+      completion.controller.abort();
+    },
+  });
 
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      },
-    });
-  } catch (error) {
-    console.error("Chat error:", error);
-    return new Response(JSON.stringify({ error: "Failed to process chat" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-}
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
+});

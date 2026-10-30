@@ -278,7 +278,7 @@ model RoomType {
   sizeSqm       Int?
   pricePerNight Float
   currency      String   @default("SAR")
-  /// Physical inventory of this room type
+  /// Rooms of this type allocated for booking through the platform (allotment)
   totalRooms    Int
   amenities     String[]
   /// Wheelchair accessible / medical-friendly room

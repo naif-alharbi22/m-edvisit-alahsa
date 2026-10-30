@@ -1,0 +1,18 @@
+import { NextResponse } from "next/server";
+import { parseJson, withErrorHandling } from "@/lib/api";
+import { requireApiRole, resolveFacilityScope } from "@/lib/session";
+import { facilityProfileSchema } from "@/lib/validators/catalog";
+import { getFacility, updateFacility } from "@/server/services/facilities";
+
+export const GET = withErrorHandling(async (req) => {
+  const user = await requireApiRole("HOSPITAL_ADMIN", "SUPER_ADMIN");
+  const facilityId = resolveFacilityScope(user, new URL(req.url).searchParams.get("facilityId"));
+  return NextResponse.json({ facility: await getFacility(facilityId) });
+});
+
+export const PATCH = withErrorHandling(async (req) => {
+  const user = await requireApiRole("HOSPITAL_ADMIN", "SUPER_ADMIN");
+  const facilityId = resolveFacilityScope(user, new URL(req.url).searchParams.get("facilityId"));
+  const input = await parseJson(req, facilityProfileSchema);
+  return NextResponse.json({ facility: await updateFacility(user.id, facilityId, input) });
+});

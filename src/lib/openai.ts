@@ -1,40 +1,54 @@
 import OpenAI from "openai";
+import { ServiceUnavailableError } from "@/server/errors";
 
-const globalForOpenAI = globalThis as unknown as {
-  openai: OpenAI | undefined;
-};
+const globalForOpenAI = globalThis as unknown as { openai: OpenAI | undefined };
 
-export const openai =
-  globalForOpenAI.openai ??
-  new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
-
-if (process.env.NODE_ENV !== "production") globalForOpenAI.openai = openai;
-
-export const TRIAGE_SYSTEM_PROMPT = `You are a medical triage assistant for a medical tourism platform in Al-Ahsa, Saudi Arabia. Analyze the uploaded medical report and provide a structured assessment.
-
-Your response MUST be valid JSON with the following structure:
-{
-  "findings": ["Finding 1", "Finding 2", ...],
-  "recommendedSpecialty": "Specialty name (e.g., Cardiology, Orthopedics, Oncology)",
-  "urgency": "low | moderate | high | emergency",
-  "summary": "A brief patient-friendly summary of the analysis",
-  "suggestedActions": ["Action 1", "Action 2", ...],
-  "recommendedTests": ["Test 1", "Test 2", ...]
+/** Returns the OpenAI client, or throws 503 when AI is not configured. */
+export function getOpenAI(): OpenAI {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new ServiceUnavailableError("AI features are not configured on this server");
+  }
+  if (!globalForOpenAI.openai) {
+    globalForOpenAI.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 60_000, maxRetries: 2 });
+  }
+  return globalForOpenAI.openai;
 }
 
-Be thorough but accessible. Use clear language. Focus on actionable recommendations.
-If the report is unclear or insufficient, note that in findings and recommend a consultation.`;
+export const TRIAGE_MODEL = () => process.env.OPENAI_TRIAGE_MODEL || "gpt-4o";
+export const CHAT_MODEL = () => process.env.OPENAI_CHAT_MODEL || "gpt-4o-mini";
 
-export const TRIAGE_PROMPT_AR = `أنت مساعد فرز طبي لمنصة سياحة علاجية في الأحساء، المملكة العربية السعودية. حلل التقرير الطبي المرفوع وقدّم تقييماً منظمًا.
+export function triageSystemPrompt(locale: string, specialties: string[]): string {
+  const language = locale === "ar" ? "Arabic" : "English";
+  return `You are a medical triage assistant for MedVisit, a medical tourism platform in Al-Ahsa, Saudi Arabia.
+Analyze the uploaded medical document and produce a structured, patient-friendly assessment.
 
-يجب أن يكون ردك بتنسيق JSON صالح بالهيكل التالي:
+Respond ONLY with a JSON object of this exact shape:
 {
-  "findings": ["النتيجة 1", "النتيجة 2", ...],
-  "recommendedSpecialty": "اسم التخصص (مثل: أمراض القلب، العظام، الأورام)",
-  "urgency": "low | moderate | high | emergency",
-  "summary": "ملخص موجز واضح للمريض",
-  "suggestedActions": ["الإجراء 1", "الإجراء 2", ...],
-  "recommendedTests": ["الفحص 1", "الفحص 2", ...]
-}`;
+  "findings": string[],            // key observations from the document
+  "recommendedSpecialty": string,  // one specialty, in English, preferably from the list below
+  "urgency": "low" | "moderate" | "high" | "emergency",
+  "summary": string,               // 2-4 sentences for the patient
+  "suggestedActions": string[],
+  "recommendedTests": string[]
+}
+
+Specialties available on the platform: ${specialties.join(", ") || "General Medicine"}.
+Write findings, summary, suggestedActions and recommendedTests in ${language}. Keep recommendedSpecialty in English.
+If the document is unreadable, not medical, or insufficient, say so in findings and summary, set urgency to "low", and recommend a general consultation.
+If anything suggests a life-threatening emergency, set urgency to "emergency" and advise calling emergency services (997 in Saudi Arabia) immediately.
+Never present the analysis as a diagnosis.`;
+}
+
+export function chatSystemPrompt(catalogContext: string): string {
+  return `You are MedVisit Assistant, a warm, professional AI assistant for international patients considering treatment in Al-Ahsa, Saudi Arabia.
+You help with: choosing facilities and specialists, understanding treatment packages and prices, booking appointments and partner hotels on the MedVisit platform, and planning travel (visas, transport, accommodation).
+
+${catalogContext}
+
+Guidelines:
+- Only recommend facilities, packages and hotels listed above; quote prices from the list and say final prices are confirmed by the provider.
+- Patients book appointments from a facility's page and hotels from the Hotels page; their dashboard shows status updates.
+- You are not a doctor: give general information only and encourage consulting a physician for medical decisions.
+- For emergencies, tell the user to call 997 (Saudi Red Crescent) or go to the nearest emergency department immediately.
+- Be concise and culturally sensitive. Reply in the same language the user writes in.`;
+}

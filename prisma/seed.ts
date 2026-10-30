@@ -229,12 +229,13 @@ async function main() {
     },
   });
 
+  const PATIENT_COUNT = 1500;
   const patientRows: Prisma.UserCreateManyInput[] = [];
-  for (let i = 0; i < 70; i++) {
+  for (let i = 0; i < PATIENT_COUNT; i++) {
     const first = pick(FIRST_NAMES);
     const last = pick(LAST_NAMES);
     // Registrations accelerate over the year (platform growth).
-    const ageDays = Math.floor(Math.pow(rand(), 1.6) * 360);
+    const ageDays = Math.floor(Math.pow(rand(), 1.5) * 365);
     patientRows.push({
       id: randomUUID(),
       email: `${first}.${last}.${i}@example.com`.toLowerCase().replace(/[^a-z0-9.@-]/g, ""),
@@ -244,28 +245,31 @@ async function main() {
       locale: rand() < 0.6 ? "ar" : "en",
       nationality: weighted(NATIONALITY_WEIGHTS),
       phone: `+9${randInt(10, 99)} ${randInt(1000, 9999)} ${randInt(1000, 9999)}`,
-      createdAt: daysFromToday(-ageDays),
+      createdAt: new Date(daysFromToday(-ageDays).getTime() + randInt(6, 22) * 3_600_000),
     });
   }
   await prisma.user.createMany({ data: patientRows });
   const patients = [
-    { id: demoPatient.id, createdAt: demoPatient.createdAt },
-    ...patientRows.map((p) => ({ id: p.id!, createdAt: p.createdAt as Date })),
+    { id: demoPatient.id, createdAt: demoPatient.createdAt, demo: true },
+    ...patientRows.map((p) => ({ id: p.id!, createdAt: p.createdAt as Date, demo: false })),
   ];
 
   // ── Medical reports (triage history) ──────────────────────────────────────
   const allSpecialties = Array.from(new Set(facilities.flatMap((f) => f.specialties)));
   const reportRows: Prisma.MedicalReportCreateManyInput[] = [];
+  const reportsByPatient = new Map<string, { id: string; specialty: string; createdAt: Date }[]>();
   for (const p of patients) {
-    const count = p.id === demoPatient.id ? 2 : randInt(0, 2);
+    const count = p.demo ? 2 : rand() < 0.68 ? randInt(1, 2) : 0;
     for (let i = 0; i < count; i++) {
-      const sinceSignup = Math.max(1, Math.floor((today.getTime() - p.createdAt.getTime()) / DAY));
-      const createdAt = daysFromToday(-randInt(0, sinceSignup));
+      const sinceSignup = Math.max(1, Math.floor((Date.now() - p.createdAt.getTime()) / DAY));
+      const createdAt = new Date(p.createdAt.getTime() + randInt(0, Math.min(sinceSignup, 30)) * DAY + randInt(1, 8) * 3_600_000);
+      if (createdAt.getTime() > Date.now()) continue;
       const specialty = pick(allSpecialties);
       const urgency = weighted(URGENCY_WEIGHTS) as "LOW" | "MODERATE" | "HIGH" | "EMERGENCY";
       const summary = `Findings suggest a ${specialty.toLowerCase()} consultation is advisable (${urgency.toLowerCase()} priority).`;
+      const id = randomUUID();
       reportRows.push({
-        id: randomUUID(),
+        id,
         userId: p.id,
         fileName: pick(REPORT_FILES),
         fileType: "application/pdf",
@@ -285,6 +289,9 @@ async function main() {
         createdAt,
         updatedAt: createdAt,
       });
+      const list = reportsByPatient.get(p.id) ?? [];
+      list.push({ id, specialty, createdAt });
+      reportsByPatient.set(p.id, list);
     }
   }
   await prisma.medicalReport.createMany({ data: reportRows });
@@ -293,25 +300,38 @@ async function main() {
   const appointmentRows: Prisma.AppointmentCreateManyInput[] = [];
   const appointmentMeta: { id: string; userId: string; scheduledAt: Date; status: string; facilityIdx: number }[] = [];
   const facilityWeights: [number, number][] = facilities.map((f, i) => [i, Math.round(f.seed.baseRating * 10) - 35]);
+  const doctorSlots = new Set<string>();
+  const horizon = Date.now() + 45 * DAY;
 
-  function addAppointment(userId: string, dayOffset: number, forceStatus?: string) {
-    const facilityIdx = weighted(facilityWeights);
+  function addAppointment(userId: string, scheduledDay: Date, forceStatus?: string, preferredSpecialty?: string) {
+    let facilityIdx = weighted(facilityWeights);
+    if (preferredSpecialty && rand() < 0.7) {
+      const matching = facilities.map((f, i) => [f, i] as const).filter(([f]) => f.specialties.includes(preferredSpecialty));
+      if (matching.length) facilityIdx = pick(matching)[1];
+    }
     const facility = facilities[facilityIdx]!;
     const usePackage = rand() < 0.55 && facility.treatmentPackages.length > 0;
     const pkg = usePackage ? pick(facility.treatmentPackages) : null;
     const doctorPool = facility.doctors.filter((d) => !pkg || d.specialty === pkg.specialty);
-    const doctor = doctorPool.length > 0 && rand() < 0.85 ? pick(doctorPool) : null;
+    let doctor = doctorPool.length > 0 && rand() < 0.85 ? pick(doctorPool) : null;
     const specialty = pkg?.specialty ?? doctor?.specialty ?? pick(facility.specialties);
-    const scheduledAt = clinicTime(daysFromToday(dayOffset));
-    const isPast = scheduledAt.getTime() < Date.now();
 
+    let scheduledAt = clinicTime(scheduledDay);
+    // Avoid double-booking a doctor in the same slot.
+    for (let tries = 0; doctor && doctorSlots.has(`${doctor.id}:${scheduledAt.getTime()}`) && tries < 5; tries++) {
+      scheduledAt = clinicTime(scheduledDay);
+    }
+    if (doctor && doctorSlots.has(`${doctor.id}:${scheduledAt.getTime()}`)) doctor = null;
+    if (doctor) doctorSlots.add(`${doctor.id}:${scheduledAt.getTime()}`);
+
+    const isPast = scheduledAt.getTime() < Date.now();
     let status = forceStatus;
     if (!status) {
       status = isPast
-        ? weighted([["COMPLETED", 78], ["CANCELLED", 14], ["NO_SHOW", 8]])
-        : weighted([["PENDING", 42], ["CONFIRMED", 50], ["CANCELLED", 8]]);
+        ? weighted([["COMPLETED", 78], ["CANCELLED", 13], ["NO_SHOW", 9]])
+        : weighted([["PENDING", 40], ["CONFIRMED", 52], ["CANCELLED", 8]]);
     }
-    const createdAt = new Date(scheduledAt.getTime() - randInt(3, 30) * DAY);
+    const createdAt = new Date(Math.min(Date.now() - 3_600_000, scheduledAt.getTime() - randInt(3, 30) * DAY));
     const id = randomUUID();
     appointmentRows.push({
       id,
@@ -324,7 +344,7 @@ async function main() {
       scheduledAt,
       status: status as Prisma.AppointmentCreateManyInput["status"],
       price: pkg?.price ?? doctor?.consultationFee ?? 300,
-      patientNotes: rand() < 0.4 ? "I will be travelling with a family member." : null,
+      patientNotes: rand() < 0.35 ? pick(["I will be travelling with a family member.", "I prefer an Arabic-speaking doctor.", "Please share preparation instructions."]) : null,
       confirmedAt: ["CONFIRMED", "COMPLETED", "NO_SHOW"].includes(status) ? new Date(createdAt.getTime() + DAY) : null,
       completedAt: status === "COMPLETED" ? scheduledAt : null,
       cancelledAt: status === "CANCELLED" ? new Date(createdAt.getTime() + 2 * DAY) : null,
@@ -335,70 +355,112 @@ async function main() {
     appointmentMeta.push({ id, userId, scheduledAt, status, facilityIdx });
   }
 
-  // Volume grows over the year: more appointments in recent months.
-  for (let i = 0; i < 300; i++) {
-    const patient = pick(patients);
-    const sinceSignup = Math.floor((today.getTime() - patient.createdAt.getTime()) / DAY);
-    const back = Math.floor(Math.pow(rand(), 1.4) * Math.min(330, Math.max(5, sinceSignup)));
-    const offset = rand() < 0.18 ? randInt(1, 45) : -back;
-    addAppointment(patient.id, offset);
+  for (const p of patients) {
+    if (p.demo) continue;
+    if (rand() > 0.6) continue; // Not every registered patient books.
+    const visits = weighted([[1, 60], [2, 28], [3, 9], [4, 3]]);
+    let day = new Date(p.createdAt.getTime() + randInt(4, 35) * DAY);
+    const reports = reportsByPatient.get(p.id) ?? [];
+    for (let v = 0; v < visits && day.getTime() < horizon; v++) {
+      const dayStart = new Date(day);
+      dayStart.setUTCHours(0, 0, 0, 0);
+      addAppointment(p.id, dayStart, undefined, reports[v]?.specialty);
+      day = new Date(day.getTime() + randInt(20, 90) * DAY);
+    }
   }
   // Demo patient: one completed visit, one upcoming confirmed, one pending.
-  addAppointment(demoPatient.id, -60, "COMPLETED");
-  addAppointment(demoPatient.id, 12, "CONFIRMED");
-  addAppointment(demoPatient.id, 26, "PENDING");
+  addAppointment(demoPatient.id, daysFromToday(-60), "COMPLETED");
+  addAppointment(demoPatient.id, daysFromToday(12), "CONFIRMED");
+  addAppointment(demoPatient.id, daysFromToday(26), "PENDING");
   await prisma.appointment.createMany({ data: appointmentRows });
 
-  // ── Hotel bookings ────────────────────────────────────────────────────────
+  // ── Hotel bookings (inventory-aware: never exceeds a room type's allotment) ──
   const bookingRows: Prisma.HotelBookingCreateManyInput[] = [];
   const bookingMeta: { userId: string; hotelIdx: number; status: string }[] = [];
+  const baseDay = daysFromToday(-420).getTime();
+  const occupancy = new Map<string, Int16Array>();
+  const dayIndex = (d: Date) => Math.round((d.getTime() - baseDay) / DAY);
+  const occFor = (roomTypeId: string) => {
+    let arr = occupancy.get(roomTypeId);
+    if (!arr) occupancy.set(roomTypeId, (arr = new Int16Array(600)));
+    return arr;
+  };
+  function fits(roomTypeId: string, total: number, checkIn: Date, nights: number, rooms: number) {
+    const arr = occFor(roomTypeId);
+    const start = dayIndex(checkIn);
+    for (let i = start; i < start + nights; i++) if (arr[i]! + rooms > total) return false;
+    return true;
+  }
+  function reserve(roomTypeId: string, checkIn: Date, nights: number, rooms: number) {
+    const arr = occFor(roomTypeId);
+    const start = dayIndex(checkIn);
+    for (let i = start; i < start + nights; i++) arr[i]! += rooms;
+  }
 
-  function addBooking(userId: string, checkIn: Date, nights: number, appointmentId: string | null, hotelIdx?: number) {
-    const hIdx = hotelIdx ?? randInt(0, hotels.length - 1);
-    const hotel = hotels[hIdx]!;
-    const room = pick(hotel.roomTypes);
-    const rooms = rand() < 0.85 ? 1 : 2;
+  function hotelOrderNear(facilityIdx: number | null): number[] {
+    const idx = hotels.map((_, i) => i);
+    if (facilityIdx === null) return idx.sort(() => rand() - 0.5);
+    const f = facilities[facilityIdx]!;
+    const dist = (h: SeededHotel) => Math.hypot(h.latitude! - f.latitude!, h.longitude! - f.longitude!);
+    // Mostly the nearest hotels, with some randomness.
+    return idx.sort((a, b) => dist(hotels[a]!) - dist(hotels[b]!) + (rand() - 0.5) * 0.02);
+  }
+
+  function addBooking(userId: string, checkIn: Date, nights: number, appointmentId: string | null, facilityIdx: number | null) {
+    const rooms = rand() < 0.88 ? 1 : 2;
     const checkOut = new Date(checkIn.getTime() + nights * DAY);
     let status: string;
     if (checkOut <= today) status = weighted([["CHECKED_OUT", 88], ["CANCELLED", 12]]);
     else if (checkIn <= today) status = "CHECKED_IN";
     else status = weighted([["PENDING", 35], ["CONFIRMED", 57], ["CANCELLED", 8]]);
-    const createdAt = new Date(checkIn.getTime() - randInt(5, 35) * DAY);
-    const totalPrice = room.pricePerNight * nights * rooms;
-    bookingRows.push({
-      id: randomUUID(),
-      reference: reference("HB"),
-      userId,
-      hotelId: hotel.id,
-      roomTypeId: room.id,
-      appointmentId,
-      checkIn,
-      checkOut,
-      guests: Math.min(room.capacity * rooms, randInt(1, 3)),
-      rooms,
-      nightlyRate: room.pricePerNight,
-      totalPrice,
-      status: status as Prisma.HotelBookingCreateManyInput["status"],
-      specialRequests: rand() < 0.3 ? pick(["Ground floor please", "Late check-in", "Wheelchair needed", "Quiet room"]) : null,
-      confirmedAt: ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"].includes(status) ? new Date(createdAt.getTime() + DAY) : null,
-      checkedInAt: ["CHECKED_IN", "CHECKED_OUT"].includes(status) ? new Date(checkIn.getTime() + 14 * 3_600_000) : null,
-      checkedOutAt: status === "CHECKED_OUT" ? new Date(checkOut.getTime() + 9 * 3_600_000) : null,
-      cancelledAt: status === "CANCELLED" ? new Date(createdAt.getTime() + 3 * DAY) : null,
-      createdAt,
-      updatedAt: createdAt,
-    });
-    bookingMeta.push({ userId, hotelIdx: hIdx, status });
+    const consumesInventory = status !== "CANCELLED";
+
+    for (const hIdx of hotelOrderNear(facilityIdx)) {
+      const hotel = hotels[hIdx]!;
+      const candidates = [...hotel.roomTypes].sort(() => rand() - 0.5);
+      for (const room of candidates) {
+        if (consumesInventory && !fits(room.id, room.totalRooms, checkIn, nights, rooms)) continue;
+        if (consumesInventory) reserve(room.id, checkIn, nights, rooms);
+        const createdAt = new Date(Math.min(Date.now() - 3_600_000, checkIn.getTime() - randInt(5, 35) * DAY));
+        bookingRows.push({
+          id: randomUUID(),
+          reference: reference("HB"),
+          userId,
+          hotelId: hotel.id,
+          roomTypeId: room.id,
+          appointmentId,
+          checkIn,
+          checkOut,
+          guests: Math.min(room.capacity * rooms, randInt(1, 3)),
+          rooms,
+          nightlyRate: room.pricePerNight,
+          totalPrice: room.pricePerNight * nights * rooms,
+          status: status as Prisma.HotelBookingCreateManyInput["status"],
+          specialRequests: rand() < 0.3 ? pick(["Ground floor please", "Late check-in", "Wheelchair needed", "Quiet room"]) : null,
+          confirmedAt: ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"].includes(status) ? new Date(createdAt.getTime() + DAY) : null,
+          checkedInAt: ["CHECKED_IN", "CHECKED_OUT"].includes(status) ? new Date(checkIn.getTime() + 14 * 3_600_000) : null,
+          checkedOutAt: status === "CHECKED_OUT" ? new Date(checkOut.getTime() + 9 * 3_600_000) : null,
+          cancelledAt: status === "CANCELLED" ? new Date(createdAt.getTime() + 3 * DAY) : null,
+          createdAt,
+          updatedAt: createdAt,
+        });
+        bookingMeta.push({ userId, hotelIdx: hIdx, status });
+        return true;
+      }
+    }
+    return false; // Fully booked everywhere for these dates.
   }
 
   for (const appt of appointmentMeta) {
-    if (appt.status === "CANCELLED" || rand() > 0.62) continue;
+    if (appt.status === "CANCELLED" || rand() > 0.68) continue;
     const apptDay = new Date(appt.scheduledAt);
     apptDay.setUTCHours(0, 0, 0, 0);
-    addBooking(appt.userId, new Date(apptDay.getTime() - DAY), randInt(2, 7), appt.id);
+    addBooking(appt.userId, new Date(apptDay.getTime() - DAY), weighted([[2, 20], [3, 25], [4, 20], [5, 15], [6, 10], [7, 10]]), appt.id, appt.facilityIdx);
   }
-  // Some stays not linked to an appointment (companions, follow-ups).
-  for (let i = 0; i < 30; i++) {
-    addBooking(pick(patients).id, daysFromToday(randInt(-300, 40)), randInt(1, 5), null);
+  // Stays not linked to an appointment (companions, follow-ups, wellness).
+  for (let i = 0; i < 260; i++) {
+    const back = Math.floor(Math.pow(rand(), 1.3) * 330);
+    addBooking(pick(patients).id, daysFromToday(rand() < 0.15 ? randInt(1, 40) : -back), randInt(1, 5), null, null);
   }
   await prisma.hotelBooking.createMany({ data: bookingRows });
 
