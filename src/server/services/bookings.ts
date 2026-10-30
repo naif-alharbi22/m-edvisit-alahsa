@@ -182,12 +182,20 @@ export async function cancelPatientBooking(userId: string, id: string, reason?: 
 
 function staffWhere(scopeHotelId: string | undefined, query: BookingListQuery): Prisma.HotelBookingWhereInput {
   const hotelId = scopeHotelId ?? query.hotelId;
+  const today = parseDateOnly(new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10));
+  const checkOut: Prisma.DateTimeFilter = {};
+  const checkIn: Prisma.DateTimeFilter = {};
+  // Date filters select stays that overlap the requested window.
+  if (query.from) checkOut.gt = parseDateOnly(query.from);
+  if (query.to) checkIn.lte = parseDateOnly(query.to);
+  // "Upcoming" = arrivals ahead plus guests still in house; "past" = departed.
+  if (query.view === "upcoming" && (!checkOut.gt || (checkOut.gt as Date) < today)) checkOut.gte = today;
+  if (query.view === "past") checkOut.lt = today;
   return {
     ...(hotelId ? { hotelId } : {}),
     ...(query.status ? { status: query.status } : {}),
-    // Date filters select stays that overlap the requested window.
-    ...(query.from ? { checkOut: { gt: parseDateOnly(query.from) } } : {}),
-    ...(query.to ? { checkIn: { lte: parseDateOnly(query.to) } } : {}),
+    ...(Object.keys(checkOut).length ? { checkOut } : {}),
+    ...(Object.keys(checkIn).length ? { checkIn } : {}),
     ...(query.q
       ? {
           OR: [
@@ -206,7 +214,7 @@ export async function listBookingsForStaff(scopeHotelId: string | undefined, que
     prisma.hotelBooking.findMany({
       where,
       include: bookingListInclude,
-      orderBy: { checkIn: query.status === "PENDING" || query.status === "CONFIRMED" || !query.status ? "asc" : "desc" },
+      orderBy: { checkIn: query.view === "upcoming" ? "asc" : "desc" },
       skip: (query.page - 1) * query.pageSize,
       take: query.pageSize,
     }),

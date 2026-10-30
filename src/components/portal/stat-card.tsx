@@ -39,7 +39,7 @@ export function StatCard({ label, value, change, upIsGood = true, hint, trend }:
         )}
       >
         <Icon className="h-3.5 w-3.5" aria-hidden />
-        {flat ? t("noChange") : formatDelta(change, locale)}
+        {flat ? t("noChange") : <span dir="ltr">{formatDelta(change, locale)}</span>}
       </span>
     );
   }
@@ -48,8 +48,8 @@ export function StatCard({ label, value, change, upIsGood = true, hint, trend }:
     <Card className="shadow-none">
       <CardContent className="space-y-2 p-4">
         <p className="text-xs font-medium text-muted-foreground">{label}</p>
-        <div className="flex items-end justify-between gap-2">
-          <p className="text-2xl font-semibold tracking-tight">{value}</p>
+        <div className="flex flex-wrap items-end justify-between gap-x-2 gap-y-1">
+          <p className="whitespace-nowrap text-2xl font-semibold tracking-tight">{value}</p>
           {trend && <Sparkline values={trend} />}
         </div>
         {(delta || hint) && (

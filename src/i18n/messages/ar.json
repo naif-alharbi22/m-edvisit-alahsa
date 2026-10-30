@@ -54,7 +54,8 @@
     "confirmDelete": "هل أنت متأكد؟ لا يمكن التراجع عن هذا الإجراء.",
     "saved": "تم حفظ التغييرات",
     "language": "اللغة",
-    "skipToContent": "تخطَّ إلى المحتوى"
+    "skipToContent": "تخطَّ إلى المحتوى",
+    "name": "الاسم"
   },
   "nav": {
     "triage": "الفرز الذكي",
@@ -488,7 +489,12 @@
     "openRecord": "فتح",
     "manage": "إدارة",
     "contactPatient": "تواصل",
-    "lastUpdated": "البيانات حتى {time, time, short}"
+    "lastUpdated": "البيانات حتى {time, time, short}",
+    "views": {
+      "upcoming": "القادمة",
+      "past": "السابقة",
+      "all": "الكل"
+    }
   },
   "analytics": {
     "appointments": "المواعيد",
@@ -549,7 +555,11 @@
     "specialty": "التخصص",
     "roomType": "نوع الغرفة",
     "country": "الدولة",
-    "other": "أخرى"
+    "other": "أخرى",
+    "otherStatuses": "مجدولة وملغاة وعدم حضور",
+    "avgVisitValue": "متوسط قيمة الزيارة",
+    "noDataShort": "لا توجد بيانات بعد",
+    "roomsOccupied": "غرف مشغولة (من {total})"
   },
   "hospital": {
     "portalTitle": "بوابة المستشفى",

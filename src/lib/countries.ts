@@ -18,7 +18,8 @@ export function isCountryCode(value: unknown): value is CountryCode {
 export function countryName(code: string | null | undefined, locale: string): string {
   if (!code) return "";
   try {
-    return new Intl.DisplayNames([locale], { type: "region" }).of(code) ?? code;
+    const name = new Intl.DisplayNames([locale], { type: "region" }).of(code) ?? code;
+    return name.replace(/[\u200e\u200f\u061c]/g, "");
   } catch {
     return code;
   }

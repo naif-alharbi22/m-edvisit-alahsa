@@ -8,6 +8,7 @@ import { useRouter, usePathname } from "@/i18n/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 interface Option {
   value: string;
@@ -15,6 +16,8 @@ interface Option {
 }
 
 interface FiltersBarProps {
+  /** Segmented view switch (e.g. upcoming / past / all), stored in ?view= */
+  views?: Option[];
   statuses?: Option[];
   extraSelect?: { param: string; placeholder: string; options: Option[] };
   showDates?: boolean;
@@ -22,7 +25,7 @@ interface FiltersBarProps {
 }
 
 /** One filter row above the content it scopes; state lives in the URL. */
-export function FiltersBar({ statuses, extraSelect, showDates = true, exportUrl }: FiltersBarProps) {
+export function FiltersBar({ views, statuses, extraSelect, showDates = true, exportUrl }: FiltersBarProps) {
   const t = useTranslations("portal");
   const tc = useTranslations("common");
   const router = useRouter();
@@ -52,16 +55,38 @@ export function FiltersBar({ statuses, extraSelect, showDates = true, exportUrl 
     return `${exportUrl}${query ? `${exportUrl.includes("?") ? "&" : "?"}${query}` : ""}`;
   })();
 
-  const hasFilters = ["q", "status", "from", "to", extraSelect?.param].some((k) => k && searchParams.get(k));
+  const hasFilters = ["q", "status", "from", "to", "view", extraSelect?.param].some((k) => k && searchParams.get(k));
 
   return (
     <form
-      className="mb-4 flex flex-wrap items-end gap-2"
+      className="mb-4 flex flex-wrap items-end gap-2 [&>*]:shrink-0"
       onSubmit={(e) => {
         e.preventDefault();
         push({ q: q.trim() || null, from: from || null, to: to || null });
       }}
     >
+      {views && (
+        <div className="inline-flex rounded-md border bg-background p-0.5" role="radiogroup">
+          {views.map((v, i) => {
+            const current = searchParams.get("view") ?? views[0]!.value;
+            return (
+              <button
+                key={v.value}
+                type="button"
+                role="radio"
+                aria-checked={current === v.value}
+                onClick={() => push({ view: i === 0 ? null : v.value })}
+                className={cn(
+                  "rounded px-3 py-1.5 text-xs font-medium transition-colors",
+                  current === v.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+                )}
+              >
+                {v.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="relative min-w-[200px] flex-1">
         <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("searchPlaceholder")} className="ps-9" aria-label={tc("search")} />

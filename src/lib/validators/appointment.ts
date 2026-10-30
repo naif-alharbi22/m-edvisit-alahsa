@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { APPOINTMENT_STATUSES } from "@/lib/status";
-import { listQuerySchema, optionalId, optionalText } from "./common";
+import { listQuerySchema, listViewSchema, optionalId, optionalText } from "./common";
 
 const MIN_LEAD_MS = 60 * 60 * 1000; // 1 hour
 const MAX_AHEAD_MS = 365 * 24 * 60 * 60 * 1000; // 1 year
@@ -43,6 +43,7 @@ export const patientCancelSchema = z.object({
 });
 
 export const appointmentListQuerySchema = listQuerySchema.extend({
+  view: listViewSchema,
   status: z.preprocess((v) => (v === "" || v === "ALL" ? undefined : v), z.enum(APPOINTMENT_STATUSES).optional()),
   facilityId: z.preprocess((v) => (v === "" ? undefined : v), z.string().max(64).optional()),
 });

@@ -179,19 +179,26 @@ export async function cancelPatientAppointment(userId: string, id: string, reaso
 
 // ─── Staff operations ───────────────────────────────────────────────────────
 
+function startOfToday() {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - 3 * 3_600_000);
+}
+
 function staffWhere(scopeFacilityId: string | undefined, query: AppointmentListQuery): Prisma.AppointmentWhereInput {
   const facilityId = scopeFacilityId ?? query.facilityId;
+  const scheduledAt: Prisma.DateTimeFilter = {};
+  if (query.from) scheduledAt.gte = startOfDayUtc(query.from);
+  if (query.to) scheduledAt.lte = endOfDayUtc(query.to);
+  if (query.view === "upcoming") {
+    const today = startOfToday();
+    if (!scheduledAt.gte || (scheduledAt.gte as Date) < today) scheduledAt.gte = today;
+  } else if (query.view === "past") {
+    scheduledAt.lt = startOfToday();
+  }
   return {
     ...(facilityId ? { facilityId } : {}),
     ...(query.status ? { status: query.status } : {}),
-    ...(query.from || query.to
-      ? {
-          scheduledAt: {
-            ...(query.from ? { gte: startOfDayUtc(query.from) } : {}),
-            ...(query.to ? { lte: endOfDayUtc(query.to) } : {}),
-          },
-        }
-      : {}),
+    ...(Object.keys(scheduledAt).length ? { scheduledAt } : {}),
     ...(query.q
       ? {
           OR: [
@@ -215,7 +222,7 @@ export async function listAppointmentsForStaff(scopeFacilityId: string | undefin
     prisma.appointment.findMany({
       where,
       include: appointmentListInclude,
-      orderBy: { scheduledAt: query.status === "PENDING" || !query.status ? "asc" : "desc" },
+      orderBy: { scheduledAt: query.view === "upcoming" ? "asc" : "desc" },
       skip: (query.page - 1) * query.pageSize,
       take: query.pageSize,
     }),

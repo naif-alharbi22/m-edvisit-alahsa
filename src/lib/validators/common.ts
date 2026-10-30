@@ -41,5 +41,12 @@ export const listQuerySchema = paginationSchema.extend({
   to: z.preprocess(emptyToUndefined, isoDate.optional()),
 });
 
+/** Operational list views: upcoming (default, soonest first), past (latest first) or all. */
+export const listViewSchema = z.preprocess(
+  emptyToUndefined,
+  z.enum(["upcoming", "past", "all"]).default("upcoming")
+);
+export type ListView = "upcoming" | "past" | "all";
+
 export const analyticsRangeSchema = z.enum(["30d", "90d", "12m"]).default("90d");
 export type AnalyticsRange = z.infer<typeof analyticsRangeSchema>;

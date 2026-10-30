@@ -1,12 +1,14 @@
 "use client";
 
-import { SERIES } from "./palette";
+import { MUTED_SERIES, SERIES } from "./palette";
 
 export interface RankedItem {
   label: string;
   value: number;
   /** Optional secondary text shown after the value (e.g. a share). */
   note?: string;
+  /** De-emphasized bucket such as "Other". */
+  muted?: boolean;
 }
 
 /**
@@ -38,7 +40,7 @@ export function RankedBars({
             <div className="flex min-w-0 items-center gap-2">
               <div
                 className="h-2.5 rounded-e-[4px]"
-                style={{ width: `${Math.max(pct, item.value > 0 ? 1.5 : 0)}%`, background: color }}
+                style={{ width: `${Math.max(pct, item.value > 0 ? 1.5 : 0)}%`, background: item.muted ? MUTED_SERIES : color }}
                 aria-hidden
               />
               <span className="shrink-0 font-medium tabular-nums">

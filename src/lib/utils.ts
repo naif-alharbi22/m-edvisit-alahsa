@@ -17,15 +17,6 @@ export function localized<T extends Record<string, unknown>>(
   return typeof base === "string" ? base : "";
 }
 
-export function formatMoney(amount: number | null | undefined, currency = "SAR", locale = "en"): string {
-  if (amount === null || amount === undefined) return "—";
-  return new Intl.NumberFormat(locale === "ar" ? "ar-SA" : "en-US", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: amount % 1 === 0 ? 0 : 2,
-  }).format(amount);
-}
-
 export function roundMoney(amount: number): number {
   return Math.round(amount * 100) / 100;
 }

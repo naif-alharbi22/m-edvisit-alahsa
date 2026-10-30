@@ -119,6 +119,7 @@ export async function getFacilityAnalytics(facilityId: string, rangeKey: Analyti
       noShowRate: { value: rate(noShow, resolved) },
       uniquePatients: { value: patientsNow.length, change: percentChange(patientsNow.length, patientsPrev.length) },
       pendingRequests: { value: pending },
+      avgVisitValue: { value: completed ? round2(revenue / completed) : 0 },
       rating: { value: facility?.rating ?? 0, reviews: facility?.reviewCount ?? 0 },
     },
     series: range.buckets.map((b, i) => ({

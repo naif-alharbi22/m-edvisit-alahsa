@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { BOOKING_STATUSES } from "@/lib/status";
-import { isoDate, listQuerySchema, optionalId, optionalText } from "./common";
+import { isoDate, listQuerySchema, listViewSchema, optionalId, optionalText } from "./common";
 import { nightsBetween, parseDateOnly } from "@/lib/utils";
 
 export const MAX_STAY_NIGHTS = 60;
@@ -56,6 +56,7 @@ export const managerUpdateBookingSchema = z
 export type ManagerUpdateBookingInput = z.infer<typeof managerUpdateBookingSchema>;
 
 export const bookingListQuerySchema = listQuerySchema.extend({
+  view: listViewSchema,
   status: z.preprocess((v) => (v === "" || v === "ALL" ? undefined : v), z.enum(BOOKING_STATUSES).optional()),
   hotelId: z.preprocess((v) => (v === "" ? undefined : v), z.string().max(64).optional()),
 });

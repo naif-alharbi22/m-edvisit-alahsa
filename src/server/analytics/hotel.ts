@@ -50,7 +50,7 @@ export async function getHotelAnalytics(hotelId: string, rangeKey: AnalyticsRang
       }),
       prisma.hotelBooking.count({ where: { hotelId, checkIn: today, status: { in: ["PENDING", "CONFIRMED"] } } }),
       prisma.hotelBooking.count({ where: { hotelId, checkOut: today, status: "CHECKED_IN" } }),
-      prisma.hotelBooking.aggregate({ where: { hotelId, status: "CHECKED_IN" }, _sum: { guests: true }, _count: true }),
+      prisma.hotelBooking.aggregate({ where: { hotelId, status: "CHECKED_IN" }, _sum: { guests: true, rooms: true }, _count: true }),
       prisma.hotelBooking.findMany({
         where: {
           hotelId,
@@ -119,10 +119,12 @@ export async function getHotelAnalytics(hotelId: string, rangeKey: AnalyticsRang
       departuresToday,
       inHouseBookings: inHouse._count,
       inHouseGuests: inHouse._sum.guests ?? 0,
+      roomsOccupied: inHouse._sum.rooms ?? 0,
     },
     series: range.buckets.map((b, i) => ({
       key: b.key,
       occupancy: occSeries[i]!.occupancy,
+      soldRoomNights: occSeries[i]!.soldRoomNights,
       revenue: occSeries[i]!.revenue,
       bookings: bookings[i]!.value,
     })),

@@ -54,7 +54,8 @@
     "confirmDelete": "Are you sure? This cannot be undone.",
     "saved": "Changes saved",
     "language": "Language",
-    "skipToContent": "Skip to content"
+    "skipToContent": "Skip to content",
+    "name": "Name"
   },
   "nav": {
     "triage": "AI Triage",
@@ -488,7 +489,12 @@
     "openRecord": "Open",
     "manage": "Manage",
     "contactPatient": "Contact",
-    "lastUpdated": "Data as of {time, time, short}"
+    "lastUpdated": "Data as of {time, time, short}",
+    "views": {
+      "upcoming": "Upcoming",
+      "past": "Past",
+      "all": "All"
+    }
   },
   "analytics": {
     "appointments": "Appointments",
@@ -549,7 +555,11 @@
     "specialty": "Specialty",
     "roomType": "Room type",
     "country": "Country",
-    "other": "Other"
+    "other": "Other",
+    "otherStatuses": "Scheduled, cancelled & no-show",
+    "avgVisitValue": "Average visit value",
+    "noDataShort": "No data yet",
+    "roomsOccupied": "Rooms occupied (of {total})"
   },
   "hospital": {
     "portalTitle": "Hospital Portal",
