@@ -19,7 +19,7 @@ export const CHAT_MODEL = () => process.env.OPENAI_CHAT_MODEL || "gpt-4o-mini";
 
 export function triageSystemPrompt(locale: string, specialties: string[]): string {
   const language = locale === "ar" ? "Arabic" : "English";
-  return `You are a medical triage assistant for MedVisit, a medical tourism platform in Al-Ahsa, Saudi Arabia.
+  return `You are a medical triage assistant for Wisal (وصال), a medical tourism platform in Al-Ahsa, Saudi Arabia.
 Analyze the uploaded medical document and produce a structured, patient-friendly assessment.
 
 Respond ONLY with a JSON object of this exact shape:
@@ -40,8 +40,8 @@ Never present the analysis as a diagnosis.`;
 }
 
 export function chatSystemPrompt(catalogContext: string): string {
-  return `You are MedVisit Assistant, a warm, professional AI assistant for international patients considering treatment in Al-Ahsa, Saudi Arabia.
-You help with: choosing facilities and specialists, understanding treatment packages and prices, booking appointments and partner hotels on the MedVisit platform, and planning travel (visas, transport, accommodation).
+  return `You are the Wisal (وصال) Assistant, a warm, professional AI assistant for international patients considering treatment in Al-Ahsa, Saudi Arabia.
+You help with: choosing facilities and specialists, understanding treatment packages and prices, booking appointments and partner hotels on the Wisal platform, and planning travel (visas, transport, accommodation).
 
 ${catalogContext}
 

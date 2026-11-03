@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
+import { WisalMark } from "@/components/brand/wisal-logo";
 import {
   BarChart3,
   BedDouble,
@@ -111,9 +112,7 @@ export function PortalShell({ portal, subtitle, user, unreadNotifications, child
 
   const brand = (
     <div className="flex h-16 items-center gap-2 border-b px-4">
-      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-        <span className="text-sm font-bold text-primary-foreground">M</span>
-      </div>
+      <WisalMark className="h-9 shrink-0" />
       <div className="min-w-0">
         <p className="truncate text-sm font-bold">{t("portalTitle")}</p>
         {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}

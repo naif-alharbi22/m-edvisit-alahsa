@@ -11,6 +11,7 @@ import { LocaleSwitcher } from "./locale-switcher";
 import { NotificationBell } from "./notification-bell";
 import { UserMenu } from "./user-menu";
 import { cn } from "@/lib/utils";
+import { WisalLogo } from "@/components/brand/wisal-logo";
 
 const LINKS = [
   { href: "/triage", key: "triage" },
@@ -44,11 +45,8 @@ export function Header() {
       )}
     >
       <div className="container mx-auto flex h-16 items-center justify-between gap-2 px-4">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-            <span className="text-sm font-bold text-primary-foreground">M</span>
-          </div>
-          <span className="text-lg font-bold">{tc("appName").split(" ")[0]}</span>
+        <Link href="/" className="flex shrink-0 items-center">
+          <WisalLogo alt={tc("appName")} priority className="h-11" />
         </Link>
 
         <nav className="hidden items-center gap-6 md:flex" aria-label="Main">

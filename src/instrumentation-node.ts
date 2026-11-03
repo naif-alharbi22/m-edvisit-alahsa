@@ -5,7 +5,7 @@ import { logger } from "@/lib/logger";
 export function validateStartup() {
   try {
     const env = parseEnv(process.env);
-    logger.info("MedVisit server starting", {
+    logger.info("Wisal server starting", {
       env: env.NODE_ENV,
       version: process.env.APP_VERSION ?? process.env.npm_package_version ?? "unknown",
       ai: Boolean(env.OPENAI_API_KEY),

@@ -1,5 +1,6 @@
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
+import { WisalLogo } from "@/components/brand/wisal-logo";
 
 export function Footer() {
   const t = useTranslations("footer");
@@ -12,11 +13,8 @@ export function Footer() {
       <div className="container mx-auto px-4 py-10">
         <div className="grid grid-cols-1 gap-8 md:grid-cols-4">
           <div className="md:col-span-1">
-            <div className="mb-3 flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
-                <span className="text-xs font-bold text-primary-foreground">M</span>
-              </div>
-              <span className="font-bold">{tc("appName")}</span>
+            <div className="mb-4">
+              <WisalLogo alt={tc("appName")} className="h-14" />
             </div>
             <p className="text-sm text-muted-foreground">{t("tagline")}</p>
           </div>

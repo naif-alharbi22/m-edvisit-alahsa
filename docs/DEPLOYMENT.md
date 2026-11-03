@@ -1,6 +1,6 @@
 # Deployment guide
 
-This guide takes a fresh Linux server to a running MedVisit Al-Ahsa instance
+This guide takes a fresh Linux server to a running Wisal instance
 with Docker Compose. A typical first deployment takes about 15 minutes.
 
 ## What gets deployed
@@ -98,7 +98,7 @@ All settings are environment variables read from `.env`. The app validates them 
 | `OPENAI_TRIAGE_MODEL`, `OPENAI_CHAT_MODEL` | no | `gpt-4o`, `gpt-4o-mini` | Models for triage and chat. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | no | | Enable Google sign-in. Set both or neither. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURE` | no | port `587` | Email notifications. Without `SMTP_HOST` notifications stay in-app. |
-| `EMAIL_FROM` | no | `MedVisit Al-Ahsa <no-reply@medvisit.local>` | Sender address. |
+| `EMAIL_FROM` | no | `Wisal <no-reply@wisal.local>` | Sender address. |
 | `LOG_LEVEL` | no | `info` | `debug`, `info`, `warn` or `error`. Logs are JSON lines on stdout. |
 | `RATE_LIMIT_ENABLED` | no | `true` | Limits on sign-in, registration, password changes, new appointments and bookings, triage and chat. |
 | `MAX_UPLOAD_MB` | no | `10` | Maximum report upload size. |

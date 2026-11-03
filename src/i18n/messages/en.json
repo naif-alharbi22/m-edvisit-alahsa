@@ -1,6 +1,6 @@
 {
   "common": {
-    "appName": "MedVisit Al-Ahsa",
+    "appName": "Wisal",
     "signIn": "Sign In",
     "signOut": "Sign Out",
     "getStarted": "Get Started",
@@ -76,7 +76,7 @@
     "badge": "Powered by AI · Al-Ahsa, Saudi Arabia",
     "title": "Your Medical Journey",
     "titleHighlight": "Starts Here",
-    "subtitle": "From first inquiry to full recovery — MedVisit transforms international patients' searches into complete, guided medical tourism experiences in Saudi Arabia.",
+    "subtitle": "From first inquiry to full recovery — Wisal transforms international patients' searches into complete, guided medical tourism experiences in Saudi Arabia.",
     "cta": "Start AI Triage",
     "secondary": "Browse Facilities"
   },
@@ -264,7 +264,7 @@
     "placeholder": "Type your message...",
     "send": "Send",
     "thinking": "Thinking...",
-    "welcome": "Hello! I'm your MedVisit assistant for medical tourism in Al-Ahsa. Ask me about facilities, specialties, treatment packages, hotels, or travel arrangements.",
+    "welcome": "Hello! I'm your Wisal assistant for medical tourism in Al-Ahsa. Ask me about facilities, specialties, treatment packages, hotels, or travel arrangements.",
     "suggestion1": "I need a cardiologist in Al-Ahsa",
     "suggestion2": "What are the best hospitals for orthopedics?",
     "suggestion3": "How much does a cardiac check-up cost?",
@@ -345,7 +345,7 @@
     "unreadCount": "{count, plural, =0 {No unread} one {# unread} other {# unread}}",
     "kinds": {
       "welcome": {
-        "title": "Welcome to MedVisit, {name}!",
+        "title": "Welcome to Wisal, {name}!",
         "body": "Start by uploading a medical report for an AI triage, or browse facilities in Al-Ahsa."
       },
       "appointmentRequested": {
@@ -408,9 +408,9 @@
   },
   "auth": {
     "loginTitle": "Welcome back",
-    "loginSubtitle": "Sign in to your MedVisit account",
+    "loginSubtitle": "Sign in to your Wisal account",
     "registerTitle": "Create your account",
-    "registerSubtitle": "Start your medical journey with MedVisit",
+    "registerSubtitle": "Start your medical journey with Wisal",
     "email": "Email",
     "password": "Password",
     "name": "Full Name",
@@ -711,7 +711,7 @@
       "audit": "Audit log"
     },
     "overviewTitle": "Platform analytics",
-    "overviewSubtitle": "Patients, demand, and partner performance across MedVisit.",
+    "overviewSubtitle": "Patients, demand, and partner performance across Wisal.",
     "usersTitle": "Users",
     "usersSubtitle": "Manage accounts, roles, and staff assignments.",
     "facilitiesTitle": "Facilities",
@@ -774,7 +774,7 @@
     "region": "Al-Ahsa, Eastern Province",
     "country": "Saudi Arabia",
     "rights": "All rights reserved.",
-    "disclaimer": "MedVisit provides information and coordination services and is not a healthcare provider."
+    "disclaimer": "Wisal provides information and coordination services and is not a healthcare provider."
   },
   "charts": {
     "viewToggle": "Chart or table view",

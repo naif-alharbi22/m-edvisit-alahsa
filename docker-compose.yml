@@ -1,4 +1,4 @@
-# MedVisit Al-Ahsa — production-style stack.
+# Wisal (وصال) — production-style stack.
 #
 #   cp .env.example .env   # then set the secrets
 #   docker compose up -d --build
@@ -25,7 +25,7 @@ x-app-env: &app-env
   SMTP_USER: ${SMTP_USER:-}
   SMTP_PASSWORD: ${SMTP_PASSWORD:-}
   SMTP_SECURE: ${SMTP_SECURE:-false}
-  EMAIL_FROM: ${EMAIL_FROM:-MedVisit Al-Ahsa <no-reply@medvisit.local>}
+  EMAIL_FROM: ${EMAIL_FROM:-Wisal <no-reply@wisal.local>}
   LOG_LEVEL: ${LOG_LEVEL:-info}
   RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
   MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-10}

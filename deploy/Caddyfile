@@ -1,4 +1,4 @@
-# Reverse proxy with automatic HTTPS (Let's Encrypt) for MedVisit.
+# Reverse proxy with automatic HTTPS (Let's Encrypt) for Wisal.
 # Set DOMAIN (and optionally ACME_EMAIL) in .env and run:
 #   docker compose --profile proxy up -d
 {

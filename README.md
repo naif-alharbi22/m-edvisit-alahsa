@@ -1,6 +1,6 @@
-# MedVisit Al-Ahsa
+# Wisal (وصال)
 
-MedVisit Al-Ahsa is a bilingual (Arabic/English) medical-tourism platform for
+Wisal is a bilingual (Arabic/English) medical-tourism platform for
 Al-Ahsa, Saudi Arabia. International patients upload a medical report, get an
 AI triage that recommends a specialty and hospitals, book a consultation, and
 reserve a nearby hotel. Hospitals and hotels run their side of the journey from
