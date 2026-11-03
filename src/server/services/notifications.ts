@@ -77,7 +77,7 @@ async function emailNotification(userId: string, kind: NotificationKind, data: N
     to: user.email,
     subject: title,
     text: `${body}\n\n${url}`,
-    html: `<div dir="${dir}" style="font-family:system-ui,sans-serif;line-height:1.5"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(body)}</p><p><a href="${escapeHtml(url)}">${escapeHtml(url)}</a></p><hr/><small>MedVisit Al-Ahsa</small></div>`,
+    html: `<div dir="${dir}" style="font-family:system-ui,sans-serif;line-height:1.5"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(body)}</p><p><a href="${escapeHtml(url)}">${escapeHtml(url)}</a></p><hr/><small>${escapeHtml((locale === "ar" ? ar : en).common.appName)}</small></div>`,
   });
 }
 

@@ -30,7 +30,7 @@ const envSchema = z
     SMTP_USER: optionalString,
     SMTP_PASSWORD: optionalString,
     SMTP_SECURE: booleanish(false),
-    EMAIL_FROM: z.string().default("MedVisit Al-Ahsa <no-reply@medvisit.local>"),
+    EMAIL_FROM: z.string().default("Wisal <no-reply@wisal.local>"),
     APP_URL: optionalString,
     LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
     RATE_LIMIT_ENABLED: booleanish(true),
